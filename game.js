@@ -267,7 +267,7 @@ const SFX = {
 // Doğudaki 4800+ şeridi prosedürel mağara odası için ayrılmıştır (haritada görünmez)
 const WORLD = { w: 6400, h: 3200 };
 let OVERWORLD_W = 4800; // ada modunda tüm haritaya genişler
-const CAVE_AREA = { x0: 4980, y0: 300, w: 1240, h: 900 };
+const CAVE_AREA = { x0: 4980, y0: 220, w: 1360, h: 1180 }; // prosedürel dungeon alanı
 const CAMPFIRE = { x: 700, y: 1600 };                 // Köy (güneybatı, su kıyısına yakın)
 const FOREST = { x: 1750, y: 720 };                   // Balta Ormanı (odun bölgesi)
 const QUARRY = { x: 1500, y: 2550 };                  // Taş Ocağı (taş bölgesi)
@@ -4516,6 +4516,7 @@ function collide(px, py, r, isEnemy) {
 // ---------- Prosedürel Mağara Koşusu ----------
 function clearCave() {
   for (const c of G.commanders) { c.patA = undefined; c.patT = 0; c.wp = null; c.sideT = 0; } // görev hedefleri tazelensin
+  G.caveRooms = null; G.caveTorches = null; G.caveFloor = null;
   G.walls = G.walls.filter(w => !w.cave);
   G.enemies = G.enemies.filter(e => e.camp !== 'cave');
   G.structures = G.structures.filter(s => !s.cave);
@@ -4523,33 +4524,93 @@ function clearCave() {
   // içeride yaralı kalan yoldaşlar dışarı sürüklenir
   for (const w of G.wounded) if (w.x > OVERWORLD_W) { w.x = CAMPFIRE.x + rr(-80, 80); w.y = CAMPFIRE.y + rr(60, 130); }
 }
-function enterCave() {
-  const A = CAVE_AREA;
-  clearCave();
-  G.caveReturn = { x: G.player.x, y: G.player.y };
-  // çevre duvarları (kapalı oda — çıkış yok!)
-  const T = 26;
+// Prosedürel zindan: hücre ızgarasında odalar açılır, komşular L koridorlarla bağlanır,
+// kapalı kalan hücreler yatay şeritler hâlinde duvara dönüşür (az sayıda dikdörtgen = hızlı çarpışma).
+function buildDungeon(A) {
+  const CELL = 40;
+  const cols = Math.floor(A.w / CELL), rows = Math.floor(A.h / CELL);
+  const acik = Array.from({ length: rows }, () => new Array(cols).fill(false));
+  const GX = 4, GY = 3;                                   // 12 oda hücresi
+  const hw = Math.floor(cols / GX), hh = Math.floor(rows / GY);
+  const odalar = [];
+  for (let gy = 0; gy < GY; gy++) for (let gx = 0; gx < GX; gx++) {
+    const ow = 4 + Math.floor(Math.random() * Math.max(1, hw - 5));
+    const oh = 3 + Math.floor(Math.random() * Math.max(1, hh - 4));
+    const ox = gx * hw + 1 + Math.floor(Math.random() * Math.max(1, hw - ow - 1));
+    const oy = gy * hh + 1 + Math.floor(Math.random() * Math.max(1, hh - oh - 1));
+    for (let j = oy; j < oy + oh && j < rows; j++) for (let i = ox; i < ox + ow && i < cols; i++) acik[j][i] = true;
+    odalar.push({ gx, gy, x: ox, y: oy, w: ow, h: oh, cx: ox + (ow >> 1), cy: oy + (oh >> 1) });
+  }
+  const ac = (i, j) => { for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) { const jj = j + dy, ii = i + dx; if (jj >= 0 && jj < rows && ii >= 0 && ii < cols) acik[jj][ii] = true; } };
+  const tunel = (a, b) => {
+    let x = a.cx, y = a.cy;
+    while (x !== b.cx) { x += Math.sign(b.cx - x); ac(x, y); }
+    while (y !== b.cy) { y += Math.sign(b.cy - y); ac(x, y); }
+  };
+  for (let gy = 0; gy < GY; gy++) for (let gx = 0; gx < GX; gx++) {
+    const a = odalar[gy * GX + gx];
+    if (gx < GX - 1) tunel(a, odalar[gy * GX + gx + 1]);
+    if (gy < GY - 1) tunel(a, odalar[(gy + 1) * GX + gx]);
+  }
+  const T = 26; // dış kabuk
   G.walls.push(
     { cave: true, x: A.x0 - T, y: A.y0 - T, w: A.w + T * 2, h: T },
     { cave: true, x: A.x0 - T, y: A.y0 + A.h, w: A.w + T * 2, h: T },
     { cave: true, x: A.x0 - T, y: A.y0 - T, w: T, h: A.h + T * 2 },
     { cave: true, x: A.x0 + A.w, y: A.y0 - T, w: T, h: A.h + T * 2 },
   );
-  // iç kaya sütunları (her koşuda farklı yerleşim)
-  for (let i = 0; i < 7; i++) {
-    G.walls.push({ cave: true, x: A.x0 + 180 + Math.random() * (A.w - 420), y: A.y0 + 60 + Math.random() * (A.h - 200), w: 60 + Math.random() * 90, h: 46 + Math.random() * 80 });
+  for (let j = 0; j < rows; j++) { // kapalı hücreler → yatay duvar şeritleri
+    let i = 0;
+    while (i < cols) {
+      if (acik[j][i]) { i++; continue; }
+      let k = i;
+      while (k < cols && !acik[j][k]) k++;
+      G.walls.push({ cave: true, x: A.x0 + i * CELL, y: A.y0 + j * CELL, w: (k - i) * CELL, h: CELL });
+      i = k;
+    }
   }
-  // düşman kadrosu: bölge/zorlukla büyür + derinlerde boss
+  const dunya = o => ({ x: A.x0 + (o.cx + 0.5) * CELL, y: A.y0 + (o.cy + 0.5) * CELL });
+  // Zemin: açık hücrelerin tamamı (odalar + koridorlar) yatay şeritler hâlinde
+  const zemin = [];
+  for (let j = 0; j < rows; j++) {
+    let i = 0;
+    while (i < cols) {
+      if (!acik[j][i]) { i++; continue; }
+      let k = i;
+      while (k < cols && acik[j][k]) k++;
+      zemin.push({ x: A.x0 + i * CELL, y: A.y0 + j * CELL, w: (k - i) * CELL, h: CELL });
+      i = k;
+    }
+  }
+  G.caveFloor = zemin;
+  G.caveRooms = odalar.map(o => ({ x: A.x0 + o.x * CELL, y: A.y0 + o.y * CELL, w: o.w * CELL, h: o.h * CELL }));
+  return { odalar, dunya };
+}
+function enterCave() {
+  const A = CAVE_AREA;
+  clearCave();
+  G.caveReturn = { x: G.player.x, y: G.player.y };
+  const { odalar, dunya } = buildDungeon(A);
+  const giris = odalar[0], boss = odalar[odalar.length - 1];
+  const gp = dunya(giris), bp = dunya(boss);
+  // düşman kadrosu odalara dağılır (giriş odası boş: nefes alacak yer)
   const pool = ['barb', 'barb', 'archer', 'shieldbarb', 'brute', 'shaman'];
-  const n = 5 + Math.floor(Math.random() * 3) + (G.region - 1);
-  for (let i = 0; i < n; i++) {
-    spawnEnemy(pool[Math.floor(Math.random() * pool.length)], A.x0 + 320 + Math.random() * (A.w - 460), A.y0 + 70 + Math.random() * (A.h - 140), 'cave');
+  const toplam = 6 + Math.floor(Math.random() * 3) + (G.region - 1);
+  let kalan = toplam;
+  G.caveTorches = [];
+  for (let oi = 1; oi < odalar.length; oi++) {
+    const p2 = dunya(odalar[oi]);
+    G.caveTorches.push({ x: p2.x + rr(-40, 40), y: p2.y - rr(20, 60) }); // her odada meşale
+    if (oi === odalar.length - 1) continue;                              // boss odasına aşağıda bakılır
+    const adet = Math.max(1, Math.round(kalan / (odalar.length - oi)));
+    for (let i = 0; i < adet && kalan > 0; i++, kalan--)
+      spawnEnemy(pool[Math.floor(Math.random() * pool.length)], p2.x + rr(-70, 70), p2.y + rr(-50, 50), 'cave');
   }
-  spawnEnemy('bear', A.x0 + A.w - 200, A.y0 + A.h / 2 + rr(-120, 120), 'cave');
-  // hazine boss'un ardında
-  G.structures.push({ kind: 'cavechest', cave: true, x: A.x0 + A.w - 80, y: A.y0 + A.h / 2, hp: 1, maxHp: 1, alive: true });
+  spawnEnemy('bear', bp.x - 40, bp.y, 'cave');
+  for (let i = 0; i < 2; i++) spawnEnemy('brute', bp.x + rr(-70, 70), bp.y + rr(-60, 60), 'cave'); // boss muhafızları
+  G.structures.push({ kind: 'cavechest', cave: true, x: bp.x + 60, y: bp.y, hp: 1, maxHp: 1, alive: true });
   // içeri ışınlan (yanındakilerle)
-  G.player.x = A.x0 + 80; G.player.y = A.y0 + A.h / 2;
+  G.player.x = gp.x; G.player.y = gp.y;
   [...G.soldiers, ...G.commanders].forEach(sl => { sl.x = G.player.x + rr(-30, 30); sl.y = G.player.y + rr(30, 70); });
   G.autoTravel = null; G.pendingTravel = null;
   G.caveRun = { active: true };
@@ -6987,9 +7048,27 @@ function drawProp(pr) {
     ctx.beginPath(); ctx.moveTo(x - 22, y - 34); ctx.lineTo(x, y - 44); ctx.lineTo(x + 6, y - 30); ctx.lineTo(x - 12, y - 26); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#141018';
     ctx.beginPath(); ctx.ellipse(x, y - 8, 14, 15, 0, Math.PI, 0); ctx.fill();
-    if (!G.caveCleared) { // içeriden parlayan gözler
+    const dolu = (G.caveCd || 0) <= 0;
+    if (dolu) { // HAZIR: ağızdan sızan altın ışık + nabız halkası + 💎
+      const nb = 0.55 + Math.sin(G.t * 2.2) * 0.45;
+      const gl = ctx.createRadialGradient(x, y - 10, 2, x, y - 10, 46);
+      gl.addColorStop(0, 'rgba(255,205,90,' + (0.34 * nb + 0.16) + ')');
+      gl.addColorStop(1, 'rgba(255,190,70,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y - 10, 46, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,214,120,' + (0.5 - nb * 0.3) + ')'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(x, y + 2, 30 + nb * 12, 12 + nb * 5, 0, 0, TAU); ctx.stroke();
       const bl = Math.sin(G.t * 1.8) > -0.4 ? 1 : 0;
       if (bl) { ctx.fillStyle = '#ffd257'; ctx.beginPath(); ctx.arc(x - 4, y - 10, 1.6, 0, TAU); ctx.arc(x + 4, y - 10, 1.6, 0, TAU); ctx.fill(); }
+      ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('💎', x, y - 52 + Math.sin(G.t * 2.4) * 3);
+      ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = '#ffd97e';
+      ctx.fillText('HAZİNE VAR', x, y - 64);
+    } else { // BOŞ: soğuk gri, kalan süre
+      ctx.fillStyle = 'rgba(30,34,48,0.35)';
+      ctx.beginPath(); ctx.ellipse(x, y - 6, 34, 26, 0, 0, TAU); ctx.fill();
+      const m2 = Math.floor(G.caveCd / 60), s2 = Math.floor(G.caveCd % 60);
+      ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(200,205,215,0.85)';
+      ctx.fillText('⏳ ' + m2 + ':' + String(s2).padStart(2, '0'), x, y - 52);
     }
   } else if (pr.kind === 'trader') {
     // renkli tüccar konağı: büyük çadır + halı + deve + mal sandıkları
@@ -7224,6 +7303,15 @@ function drawCatapult(c) {
 }
 function drawFortWalls() {
   for (const w of G.walls) {
+    if (w.cave) { // zindan kayası: mazgal yok, çatlaklı kütle
+      ctx.fillStyle = '#4a4756';
+      ctx.fillRect(w.x, w.y - 14, w.w, w.h + 14);
+      ctx.fillStyle = '#565367';
+      ctx.fillRect(w.x, w.y - 14, w.w, 9);
+      ctx.fillStyle = 'rgba(24,22,32,0.5)';
+      for (let bx = w.x + 8; bx < w.x + w.w - 6; bx += 34) ctx.fillRect(bx, w.y - 6, 16, 3);
+      continue;
+    }
     ctx.fillStyle = '#8f8f95';
     ctx.fillRect(w.x, w.y - 16, w.w, w.h + 16); // yükseklik hissi
     ctx.fillStyle = '#a8a8ad';
@@ -7252,6 +7340,33 @@ function render() {
     const y = cy + ((i * 173 + G.t * 14) % (VH + 60)) - 30;
     const x = shoreX(y) - 45 - 25 * Math.sin(y * 0.01 + i);
     if (x > cx - 40) { ctx.beginPath(); ctx.moveTo(x - 14, y); ctx.lineTo(x + 14, y); ctx.stroke(); }
+  }
+
+  // zindan: oda zeminleri ve meşaleler (duvarların altında)
+  if (G.caveRun && G.caveFloor) {
+    for (const f of G.caveFloor) { // koridorlar dahil tüm yürünebilir zemin
+      if (f.x > cx + VW || f.x + f.w < cx || f.y > cy + VH || f.y + f.h < cy) continue;
+      ctx.fillStyle = '#33303f';
+      ctx.fillRect(f.x, f.y, f.w, f.h);
+    }
+    for (const r of (G.caveRooms || [])) { // odalar biraz daha açık + çerçeveli
+      if (r.x > cx + VW || r.x + r.w < cx || r.y > cy + VH || r.y + r.h < cy) continue;
+      ctx.fillStyle = '#3d3950';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = 'rgba(16,14,22,0.6)'; ctx.lineWidth = 3;
+      ctx.strokeRect(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3);
+      ctx.fillStyle = 'rgba(255,255,255,0.035)';                // zemin taşları
+      for (let gx2 = r.x + 20; gx2 < r.x + r.w - 10; gx2 += 46)
+        for (let gy2 = r.y + 18; gy2 < r.y + r.h - 10; gy2 += 40) ctx.fillRect(gx2, gy2, 26, 20);
+    }
+    for (const t of (G.caveTorches || [])) {
+      // NOT: vis() bu noktada henüz tanımlı değil (TDZ) — sınır kontrolü elle yapılır
+      if (t.x < cx - 60 || t.x > cx + VW + 60 || t.y < cy - 60 || t.y > cy + VH + 60) continue;
+      ctx.fillStyle = '#4a3a24'; ctx.fillRect(t.x - 2, t.y - 18, 4, 18);
+      const par = 0.75 + Math.sin(G.t * 7 + t.x) * 0.25;
+      ctx.fillStyle = '#ff9a2e'; ctx.beginPath(); ctx.ellipse(t.x, t.y - 22, 5 * par, 8 * par, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffd257'; ctx.beginPath(); ctx.ellipse(t.x, t.y - 23, 2.6 * par, 4.5 * par, 0, 0, TAU); ctx.fill();
+    }
   }
 
   // boss şarj telegrafı: kırmızı uyarı şeridi
@@ -7641,6 +7756,7 @@ function render() {
       L.fillStyle = g2; L.beginPath(); L.arc(lx, ly, r, 0, TAU); L.fill();
     };
     if (G.caveRun) {
+      for (const t of (G.caveTorches || [])) punch(t.x - cx, t.y - cy - 20, 165, 0.7); // duvar meşaleleri
       if (!G.dead) punch(G.player.x - cx, G.player.y - cy - 20, 230, 0.95); // meşale
       const cc = G.structures.find(s2 => s2.kind === 'cavechest' && s2.alive);
       if (cc) punch(cc.x - cx, cc.y - cy - 10, 110, 0.6);
