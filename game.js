@@ -2155,7 +2155,9 @@ function autoSite(s) {
     }
     if (r9) return;
   }
-  if (s.op && !s.op.wall && OP_WALL_SITES.includes(s.id) && !VISIT && !ISLAND) { // karakola çit
+  // karakola çit: ancak arsalar dolduktan SONRA (önce ev + gözcü kulesi, sur en pahalı iş)
+  if (s.op && !s.op.wall && OP_WALL_SITES.includes(s.id) && !VISIT && !ISLAND
+      && !G.plots.some(p2 => p2.outpost === s.id && !p2.built)) {
     s.op.wallPaid = s.op.wallPaid || {};
     const r7 = autoPayFly(s, bcost(OP_WALL.cost), s.op.wallPaid, s.anchor.x, s.anchor.y + 60);
     if (r7 === 2) {
@@ -2629,6 +2631,80 @@ function renderPanel() {
     });
     return;
   }
+  if (th.opStock) { // 🏳️ Karakol Ambarı: buradaki üretim burada birikir — al / bırak
+    const site = th.opStock, op2 = G.outposts[site], O2 = OUTPOSTS[site];
+    if (!op2 || !O2) { closePanel(); return; }
+    op2._id = site; op2.stock = op2.stock || {};
+    const cap2 = opStockCap(op2);
+    elPanelTitle.textContent = '🏳️ ' + O2.name + ' — Ambar';
+    let html2 = VISIT
+      ? '<div class="pdesc" style="margin-bottom:8px">Ev sahibinin karakol ambarı. Ziyarette <b>topladığın her şey</b> zaten ona akıyor; elle taşımana gerek yok.</div>'
+      : '<div class="pdesc" style="margin-bottom:8px">Bu karakolun kendi ambarı: buradaki bıçkıhane, avcı ve köylüler üretimlerini <b>buraya</b> koyar. Limit: <b>' + cap2 + '</b>/kaynak (🏬 Depo kurarak artar). Karakolun <b>oto yönetimi</b> inşaat, tamir ve asker için buradan harcar — kaynak bırakırsan burayı hızla geliştirir.</div>';
+    for (const [k, icon] of RES_DEF) {
+      if (k === 'gold' || k === 'gems') continue; // değerliler hep cepte
+      const s3 = Math.floor(op2.stock[k] || 0), pk3 = Math.floor(G.res[k] || 0);
+      html2 += '<div class="stockRow"><span class="stockInfo">' + icon + ' <b>' + s3 + '</b>/' + cap2 +
+        (VISIT ? '' : ' <span class="stockPocket">· cebinde ' + pk3 + '</span>') + '</span>' +
+        (VISIT ? '' :
+          '<button class="garBtn stockBtn" data-k="' + k + '" data-op="take" ' + (s3 ? '' : 'disabled') + '>⬇ Al</button>' +
+          '<button class="garBtn stockBtn" data-k="' + k + '" data-op="put" ' + (pk3 && s3 < cap2 ? '' : 'disabled') + '>⬆ Bırak</button>') + '</div>';
+    }
+    if (!VISIT) { // oto yönetimin bir işe ayırdığı kaynaklar burada görünsün
+      const bek = [];
+      if (op2.wallPaid && Object.keys(op2.wallPaid).length) bek.push(['🪵 Karakol suru', op2.wallPaid, bcost(OP_WALL.cost)]);
+      if (op2.gatePaid && Object.keys(op2.gatePaid).length) bek.push(['🚪 Sur kapısı', op2.gatePaid, bcost(OP_WALL.repair)]);
+      if (op2.kgPaid && Object.keys(op2.kgPaid).length) bek.push(['🚪 Kale kapısı', op2.kgPaid, bcost(site === 'fort' ? { wood: 60, stone: 40 } : { stone: 80, iron: 12 })]);
+      for (const pl2 of G.plots) {
+        if (pl2.outpost !== site || pl2.built || !pl2.paid || !Object.keys(pl2.paid).length) continue;
+        bek.push([(BUILDINGS[pl2.plan] || {}).icon + ' ' + (BUILDINGS[pl2.plan] || {}).name, pl2.paid, bcost((BUILDINGS[pl2.plan] || {}).cost || {})]);
+      }
+      for (const b4 of G.buildings) { // bu karakoldaki yükseltme / onarım birikimleri
+        if (b4.outpost !== site || !BUILDINGS[b4.type]) continue;
+        const B4 = BUILDINGS[b4.type];
+        if (b4.upPaid && Object.keys(b4.upPaid).length) {
+          const c4 = nextUpCost(b4);
+          if (c4) bek.push([B4.icon + ' ' + B4.name + ' ⬆Sv.' + (b4.lv + 1), b4.upPaid, bcost(c4)]);
+        }
+        if (b4.repPaid && Object.keys(b4.repPaid).length) bek.push([B4.icon + ' ' + B4.name + ' 🔧 onarım', b4.repPaid, bcost(repairCost(b4.type))]);
+      }
+      if (bek.length) {
+        html2 += '<div class="gearHead2">⚙️ Oto yönetimin biriktirdiği</div>';
+        for (const [ad, odenen, gereken] of bek) {
+          const kalan = Object.entries(gereken).map(([k4, v4]) => {
+            const eksik = v4 - (odenen[k4] || 0);
+            return eksik > 0 ? eksik + (RES_DEF.find(r => r[0] === k4) || ['', ''])[1] : null;
+          }).filter(Boolean).join(' ');
+          html2 += '<div class="stockRow"><span class="stockInfo">' + ad + ' — kalan: <b>' + (kalan || 'tamam') + '</b></span></div>';
+        }
+      }
+    }
+    elPanelBody.innerHTML = html2;
+    if (!VISIT) elPanelBody.querySelectorAll('.stockBtn').forEach(el => el.addEventListener('click', () => {
+      const k = el.dataset.k;
+      if (el.dataset.op === 'take') {
+        const n = Math.floor(op2.stock[k] || 0);
+        op2.stock[k] -= n; gain({ [k]: n }, G.player.x, G.player.y - 30);
+      } else {
+        const n = Math.min(Math.floor(G.res[k] || 0), cap2 - Math.floor(op2.stock[k] || 0));
+        if (n <= 0) return;
+        G.res[k] -= n; op2.stock[k] = (op2.stock[k] || 0) + n;
+        flashChip(k);
+        addFloater(G.player.x, G.player.y - 40, '⬆ ' + n + ' → 🏳️', '#c8e0a8', 13);
+      }
+      SFX.coin(); save(); renderPanel();
+    }));
+    if (!VISIT) pitem('⬆ Hepsini bırak', 'Cebindeki tüm inşaat kaynaklarını bu ambara aktar', null, 'Aktar', true, () => {
+      let toplam = 0;
+      for (const [k] of RES_DEF) {
+        if (k === 'gold' || k === 'gems') continue;
+        const n = Math.min(Math.floor(G.res[k] || 0), cap2 - Math.floor(op2.stock[k] || 0));
+        if (n > 0) { G.res[k] -= n; op2.stock[k] = (op2.stock[k] || 0) + n; toplam += n; }
+      }
+      if (toplam) { SFX.coin(); addFloater(G.player.x, G.player.y - 40, '⬆ ' + toplam + ' → 🏳️', '#c8e0a8', 14); save(); }
+      renderPanel();
+    });
+    return;
+  }
   if (th.stockPage) { // 🏬 Köy Deposu: pasif üretim burada birikir — al/bırak
     const cap = stockCap();
     elPanelTitle.textContent = '🏬 Köy Deposu' + (VISIT ? ' — ' + VISIT.name : '');
@@ -2862,13 +2938,8 @@ function renderPanel() {
       op._id = s.site; op.stock = op.stock || {};
       const ambar = Object.entries(op.stock).filter(([, v]) => Math.floor(v) > 0)
         .map(([k, v]) => Math.floor(v) + (RES_DEF.find(r => r[0] === k) || ['', ''])[1]).join(' ');
-      pitem('🏳️ Üs Ambarı', (ambar || 'boş') + ' · limit ' + opStockCap(op) + '/kaynak — buradaki üretim burada birikir', null, '⬇ Al', !!ambar, () => {
-        for (const [k, v] of Object.entries(op.stock)) {
-          const n = Math.floor(v);
-          if (n > 0) { op.stock[k] -= n; gain({ [k]: n }, G.player.x, G.player.y - 30); }
-        }
-        SFX.coin(); save();
-      });
+      pitem('🏳️ Üs Ambarı', (ambar || 'boş') + ' · limit ' + opStockCap(op) + '/kaynak — kaynak al ya da buraya taşı', null, 'Aç', true,
+        () => { G.panelFor = { opStock: s.site }; renderPanel(); });
       pitem('⚙️ Oto yönetim', op.auto !== false ? 'AÇIK — ambar kaynaklarıyla kendini onarır, kurar, asker basar' : 'KAPALI — her şey elle', null,
         op.auto !== false ? 'Kapat' : 'Aç', true, () => { op.auto = op.auto === false; SFX.build(); toast('⚙️ ' + O.name + ' oto yönetim: ' + (op.auto !== false ? 'AÇIK' : 'KAPALI')); save(); renderPanel(); });
       // karakol suru: köy suru gibi, baskıncılar önce kapıyı kırmak zorunda kalır
