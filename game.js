@@ -1310,10 +1310,23 @@ function coopMsg(m) {
     }
     return;
   }
-  if (ev === 'ssync') { // host'un gerçek ambarı: misafirin ekranı fotoğrafı değil gerçeği göstersin
-    if (!CO.isHost && VISIT) {
-      for (const [k2] of RES_DEF) if (k2 !== 'gold' && k2 !== 'gems') G.stock[k2] = (d.s || {})[k2] || 0;
-      if (G.panelFor && G.panelFor.stockPage) renderPanel();
+  if (ev === 'ws') { if (!CO.isHost && CO.gotWorld) coopApplyState(d); return; } // tam dünya durumu
+  if (ev === 'nkill' && CO.isHost) { // yoldaşım bir kaynağı kırdı: bende de kırılsın
+    const n = G.nodes[d.i];
+    if (n && n.alive) { n.alive = false; n.respT = NODE_DEF[n.kind].respawn; spawnDust(n.x, n.y, 8); }
+    return;
+  }
+  if (ev === 'act' && CO.isHost) { // yoldaşımın inşaat/yükseltme işi: bedeli benim kesemden
+    const pl = G.plots[d.pi];
+    if (!pl) return;
+    if (d.k === 'build' && !pl.built && BUILDINGS[d.t]) {
+      const c = bcost(BUILDINGS[d.t].cost);
+      if (canAfford(c)) { pay(c); pl.plan = d.t; constructAt(pl); toast('🏗️ ' + ((CO.peers[d.id] || {}).name || 'Yoldaşın') + ' ' + BUILDINGS[d.t].name + ' kurdu!'); }
+      else toast('⚠️ Yoldaşın ' + BUILDINGS[d.t].name + ' kurmak istedi ama kaynak yetmedi', true);
+    } else if (d.k === 'up') {
+      const b2 = G.buildings.find(x => x.x === pl.x && x.y === pl.y);
+      const c2 = b2 && nextUpCost(b2);
+      if (b2 && c2 && canAfford(bcost(c2))) { pay(bcost(c2)); applyUpgrade(b2); toast('⬆️ ' + ((CO.peers[d.id] || {}).name || 'Yoldaşın') + ' ' + BUILDINGS[b2.type].name + '\'ni yükseltti!'); }
     }
     return;
   }
@@ -1327,20 +1340,105 @@ function coopMsg(m) {
     return;
   }
 }
-// HOST → misafirler: yakındaki düşmanların anlık durumu
+// HOST → misafirler: hareketli her şey (düşmanlar + kendi ordusu + yaban hayatı)
 function coopBroadcastWorld() {
-  const list = [];
+  const list = [], allies = [], anim = [];
   const pk = Object.values(CO.peers);
+  const yakin = (x, y) => { for (const p of pk) if (dist(x, y, p.x, p.y) < 1500) return true; return false; };
   for (const e of G.enemies) {
-    if (e.hp <= 0) continue;
-    let near = false;
-    for (const p of pk) if (dist(e.x, e.y, p.x, p.y) < 1500) { near = true; break; }
-    if (!near) continue;
+    if (e.hp <= 0 || !yakin(e.x, e.y)) continue;
     list.push([e.uid, e.type, Math.round(e.x), Math.round(e.y), Math.round(e.hp), Math.round(e.maxHp),
       +(e.dir || 0).toFixed(2), e.raceId || '', e.camp || '', e.aggro ? 1 : 0]);
     if (list.length >= 44) break;
   }
-  coopSend('w', { e: list, d: G.day, n: G.night ? 1 : 0 });
+  for (const s of G.soldiers.concat(G.commanders, G.garrisonUnits)) {
+    if (s.hp <= 0 || !yakin(s.x, s.y)) continue;
+    allies.push([Math.round(s.x), Math.round(s.y), s.cmd ? 'cmd:' + s.id : (s.cls || 'sword'),
+      Math.round(s.hp), Math.round(s.maxHp), +(s.dir || 0).toFixed(2), s.garrisonOf ? 1 : 0]);
+    if (allies.length >= 22) break;
+  }
+  for (const a of G.animals) {
+    if (a.dead || !yakin(a.x, a.y)) continue;
+    anim.push([Math.round(a.x), Math.round(a.y), a.type, Math.round(a.hp), +(a.dir || 0).toFixed(2)]);
+    if (anim.length >= 16) break;
+  }
+  coopSend('w', { e: list, a: allies, an: anim, d: G.day, n: G.night ? 1 : 0 });
+}
+// HOST → misafirler: yavaş değişen dünya durumu (binalar, kaynaklar, yapılar, sur, ambar, hava)
+function coopBroadcastState() {
+  const b = [];
+  for (const bd of G.buildings) {
+    if (bd.type === 'campfire') continue;
+    const pi = G.plots.findIndex(p => p.x === bd.x && p.y === bd.y);
+    if (pi >= 0) b.push([pi, bd.type, bd.lv, bd.ruined ? 1 : 0, bd.villager ? 1 : 0]);
+  }
+  const nd = [];
+  G.nodes.forEach((n, i) => { if (!n.alive) nd.push(i); }); // kırılmış kaynaklar
+  const st = G.structures.map(s => [s.kind + '|' + (s.site || ''), s.alive ? 1 : 0, Math.round(s.hp)]);
+  const stock = {}, res = {};
+  for (const [k] of RES_DEF) { if (G.stock[k]) stock[k] = Math.floor(G.stock[k]); if (G.res[k]) res[k] = Math.floor(G.res[k]); }
+  coopSend('ws', { b, nd, st, stock, res, wx: G.weather || 'clear', tier: G.villageTier,
+    pal: [G.palisade.built ? 1 : 0, G.palisade.lv, Math.round(G.palisade.gate.hp), G.palisade.gate.alive ? 1 : 0] });
+}
+// MİSAFİR: ev sahibinin dünya durumunu birebir uygular
+function coopApplyState(d) {
+  const gorulen = new Set();
+  for (const a of (d.b || [])) { // binalar: arsa indeksiyle eşleşir
+    const [pi, type, lv, ruined, vill] = a;
+    const pl = G.plots[pi];
+    if (!pl || !BUILDINGS[type]) continue;
+    gorulen.add(pi);
+    let bd = G.buildings.find(x => x.x === pl.x && x.y === pl.y);
+    if (!bd) {
+      pl.built = type; delete pl.paid;
+      bd = { type, x: pl.x, y: pl.y, lv, hp: buildingMaxHp(lv), maxHp: buildingMaxHp(lv),
+        ruined: !!ruined, villager: !!vill, outpost: pl.outpost || null };
+      G.buildings.push(bd);
+      G.built[type] = Math.max(G.built[type] || 0, lv);
+      spawnDust(pl.x, pl.y, 10);
+      spawnParts(pl.x, pl.y - 30, 10, { colors: ['#ffd257', '#fff3c9'], v: 45, life: 0.9, g: -25 });
+      toast('🏗️ ' + BUILDINGS[type].name + ' kuruldu (yoldaşın)');
+    } else {
+      if (bd.lv !== lv) {
+        bd.lv = lv; bd.maxHp = buildingMaxHp(lv); bd.hp = bd.maxHp;
+        G.built[type] = Math.max(G.built[type] || 0, lv);
+        spawnParts(bd.x, bd.y - 34, 10, { colors: ['#ffd257', '#fff3c9'], v: 42, life: 0.9, g: -25 });
+        toast('⬆️ ' + BUILDINGS[type].name + ' Sv.' + lv + ' oldu (yoldaşın)');
+      }
+      bd.ruined = !!ruined; bd.villager = !!vill;
+      if (bd.ruined) bd.hp = 0; else if (bd.hp <= 0) bd.hp = bd.maxHp;
+    }
+  }
+  for (const bd of G.buildings.slice()) { // ev sahibinde olmayan bina bende de olmamalı
+    if (bd.type === 'campfire') continue;
+    const pi = G.plots.findIndex(p => p.x === bd.x && p.y === bd.y);
+    if (pi >= 0 && !gorulen.has(pi)) { G.buildings = G.buildings.filter(x => x !== bd); G.plots[pi].built = null; }
+  }
+  const olu = new Set(d.nd || []); // kaynak düğümleri: onun kırdığı bende de kırık
+  G.nodes.forEach((n, i) => {
+    if (olu.has(i)) { if (n.alive) { n.alive = false; n.respT = NODE_DEF[n.kind].respawn; spawnDust(n.x, n.y, 6); } }
+    else if (!n.alive) { n.alive = true; n.hp = NODE_DEF[n.kind].hp; n.respT = 0; }
+  });
+  for (const a of (d.st || [])) { // yapılar: kapı/sancak/totem/sandık
+    const [key, alive, hp] = a;
+    const p2 = key.split('|'), kind = p2[0], site = p2[1] || '';
+    const s = G.structures.find(x => x.kind === kind && (x.site || '') === site);
+    if (s) { s.alive = !!alive; s.hp = hp; }
+  }
+  if (d.pal) {
+    G.palisade.built = !!d.pal[0];
+    if (G.palisade.lv !== d.pal[1]) { G.palisade.lv = d.pal[1]; rebuildPalisade(); }
+    G.palisade.gate.hp = d.pal[2]; G.palisade.gate.alive = !!d.pal[3];
+  }
+  if (d.tier && d.tier > G.villageTier) { // köy genişlemiş: yeni arsalar bende de açılsın
+    for (let t = G.villageTier + 1; t <= d.tier; t++) addExpansionPlots(t);
+    G.villageTier = d.tier; rebuildPalisade();
+    toast('🏗️ Köy genişledi (yoldaşın)');
+  }
+  if (d.stock) for (const [k] of RES_DEF) G.stock[k] = d.stock[k] || 0;
+  if (d.res && VISIT) for (const [k] of RES_DEF) G.res[k] = d.res[k] || 0; // ziyarette cep = ev sahibinin kesesi
+  if (d.wx) { G.weather = d.wx; G.weatherT = 999; }
+  if (G.panelFor && (G.panelFor.stockPage || G.panelFor.plot)) renderPanel();
 }
 // MİSAFİR: host'un dünyasını kendi ekranına uygular
 function coopApplyWorld(d) {
@@ -1348,9 +1446,14 @@ function coopApplyWorld(d) {
     CO.gotWorld = true;
     G.enemies = []; CO.enemyMap = {};
     G.animals = []; // hayvanlar host tarafında — hayalet av olmasın
+    if (VISIT) { // ziyarette taşıdığım ordu ev sahibinin kopyasıydı: gerçeği host'tan gelecek
+      G.soldiers = []; G.commanders = []; G.garrisonUnits = [];
+    }
     banner('🟢 AYNI DÜNYADASINIZ');
     toast('Düşmanlar artık ortak: birlikte dövüşebilirsiniz!');
   }
+  G.netAllies = (d.a || []).map(a => ({ x: a[0], y: a[1], cls: a[2], hp: a[3], maxHp: a[4], dir: a[5], gar: a[6], walk: (G.t * 8) % 100 }));
+  G.netAnimals = (d.an || []).map(a => ({ x: a[0], y: a[1], type: a[2], hp: a[3], dir: a[4] }));
   const seen = {};
   for (const a of (d.e || [])) {
     const uid = a[0];
@@ -1395,13 +1498,8 @@ function coopTick(dt) {
   if (CO.isHost && coopPeerCount() > 0) {
     CO.worldT += dt;
     if (CO.worldT >= 0.16) { CO.worldT = 0; coopBroadcastWorld(); }
-    CO.stockT = (CO.stockT || 0) + dt; // ambar durumu (misafir gerçek değeri görsün)
-    if (CO.stockT >= 2 && CO.mode === 'visit') {
-      CO.stockT = 0;
-      const st2 = {};
-      for (const [k2] of RES_DEF) if (G.stock[k2]) st2[k2] = Math.floor(G.stock[k2]);
-      coopSend('ssync', { s: st2, cap: stockCap() });
-    }
+    CO.stockT = (CO.stockT || 0) + dt; // dünya durumu: bina/kaynak/yapı/sur/ambar/hava
+    if (CO.stockT >= 2.5) { CO.stockT = 0; coopBroadcastState(); }
   }
   // yoldaşların konumunu yumuşat + sessizleşeni düşür
   for (const id of Object.keys(CO.peers)) {
@@ -2983,6 +3081,7 @@ function renderPanel() {
 function constructAt(pl) {
   const type = pl.plan, B = BUILDINGS[type];
   delete pl.paid;
+  if (coopSlave()) coopSend('act', { k: 'build', pi: G.plots.indexOf(pl), t: type }); // ev sahibinde de kurulsun
   pl.built = type; G.built[type] = Math.max(G.built[type] || 0, 1);
   G.buildings.push({ type, x: pl.x, y: pl.y, lv: 1, hp: buildingMaxHp(1), maxHp: buildingMaxHp(1), ruined: false, outpost: pl.outpost || null });
   if (ISLAND) { // ortak üs: inşan yoldaşlara da işlensin
@@ -3030,6 +3129,7 @@ function nextUpCost(b) {
   return null;
 }
 function applyUpgrade(b) {
+  if (coopSlave()) coopSend('act', { k: 'up', pi: G.plots.findIndex(p => p.x === b.x && p.y === b.y) });
   delete b.upPaid;
   b.lv++; G.built[b.type] = Math.max(G.built[b.type] || 0, b.lv);
   b.maxHp = buildingMaxHp(b.lv); b.hp = b.maxHp;
@@ -3595,6 +3695,7 @@ function doAttack() {
     addFloater(best.x + rr(-8, 8), best.y - 30, '✦', '#fff');
     if (best.hp <= 0) {
       best.alive = false; best.respT = NODE_DEF[best.kind].respawn;
+      if (coopSlave()) coopSend('nkill', { i: G.nodes.indexOf(best) }); // yoldaşımda da kırılsın
       let y = { ...NODE_DEF[best.kind].yield };
       if (best.kind === 'tree' && G.built.sawmill >= 2) y.wood += 1;
       if (best.kind === 'tree') G.stats.chops++; else if (best.kind === 'rock') G.stats.mines++;
@@ -3648,6 +3749,7 @@ function heavyAttack() {
     spawnParts(best.x, best.y - 16, 10, { colors: NODE_FX[best.kind], v: 90, life: 0.5, g: 180, r: 3.5 });
     if (best.hp <= 0) {
       best.alive = false; best.respT = NODE_DEF[best.kind].respawn;
+      if (coopSlave()) coopSend('nkill', { i: G.nodes.indexOf(best) }); // yoldaşımda da kırılsın
       let y2 = { ...NODE_DEF[best.kind].yield };
       if (best.kind === 'tree' && G.built.sawmill >= 2) y2.wood += 1;
       if (best.kind === 'tree') G.stats.chops++; else if (best.kind === 'rock') G.stats.mines++;
@@ -4676,7 +4778,11 @@ function update(dt) {
       G.weatherT = rr(55, 120);
     }
     G.wFlash = Math.max(0, (G.wFlash || 0) - dt);
-    if (G.weather === 'storm' && rng() < dt * 0.11) { G.wFlash = 0.3; tone(58, 0.7, 'sawtooth', 0.12, -20); }
+    if (G.weather === 'storm' && rng() < dt * 0.11) {
+      G.wFlash = 0.42; // parlama üstten iner, hasar flaşıyla (kırmızı) karışmaz
+      const uzak = rr(0.35, 1.4); // gök gürültüsü şimşekten sonra gelir
+      setTimeout(() => { tone(52, 0.9, 'sawtooth', 0.09, -18); setTimeout(() => tone(38, 1.1, 'triangle', 0.06, -10), 180); }, uzak * 1000);
+    }
   }
 
   // ziyaret sayacı: yerelde geri sayar, 20 sn'de bir sunucuya işlenir (günde 600 sn/arkadaş)
@@ -6811,6 +6917,27 @@ function render() {
   }
   // yaban hayatı
   for (const a of G.animals) if (!a.dead && vis(a.x, a.y)) list.push({ y: a.y, f: () => drawAnimal(a) });
+  // ev sahibinin ordusu (misafir ekranı): host'tan gelen asker/komutan/garnizon
+  if (coopSlave()) {
+    for (const a of (G.netAllies || [])) {
+      if (!vis(a.x, a.y)) continue;
+      list.push({ y: a.y, f: () => {
+        const cmd = String(a.cls).indexOf('cmd:') === 0;
+        const C2 = cmd ? COMMANDERS[a.cls.slice(4)] : null;
+        drawWarrior(a, {
+          cloth: C2 ? C2.cloth : (a.gar ? '#6e8a5e' : a.cls === 'shield' ? '#4a6a8e' : '#5c7a9e'),
+          scale: C2 ? 1.28 : (a.cls === 'shield' ? 0.64 : 0.6), hpBar: true, hpColor: '#57d364',
+          belt: true, helmet: C2 ? '#55555f' : '#9aa3b0', crest: C2 ? C2.crest : null,
+          bow: a.cls === 'bow', shield: a.cls === 'shield',
+        });
+        if (C2) {
+          ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd97e';
+          ctx.fillText(C2.icon + ' ' + C2.name, a.x, a.y - 78);
+        }
+      } });
+    }
+    for (const a of (G.netAnimals || [])) if (vis(a.x, a.y)) list.push({ y: a.y, f: () => drawAnimal(a) });
+  }
   // canlı yoldaşlar: aynı haritadaki gerçek oyuncular
   for (const pid of Object.keys(CO.peers)) {
     const pp = CO.peers[pid];
@@ -7187,7 +7314,16 @@ function drawWeather() {
     ctx.stroke();
     ctx.fillStyle = 'rgba(28,38,58,' + (w2 === 'storm' ? 0.17 : 0.09) + ')';
     ctx.fillRect(0, 0, VW, VH);
-    if ((G.wFlash || 0) > 0) { ctx.fillStyle = 'rgba(255,255,255,' + Math.min(0.5, G.wFlash * 1.6) + ')'; ctx.fillRect(0, 0, VW, VH); }
+    if ((G.wFlash || 0) > 0) { // gökten inen soğuk parlama: iki kez kırpışır, aşağı doğru söner
+      const f = G.wFlash;
+      const kirpis = f > 0.34 ? 1 : f > 0.26 ? 0.35 : f > 0.2 ? 0.8 : f / 0.25;
+      const a = Math.min(0.3, f * 0.72) * kirpis;
+      const g3 = ctx.createLinearGradient(0, 0, 0, VH);
+      g3.addColorStop(0, 'rgba(206,228,255,' + a + ')');
+      g3.addColorStop(0.5, 'rgba(196,218,255,' + (a * 0.4) + ')');
+      g3.addColorStop(1, 'rgba(190,210,245,0)');
+      ctx.fillStyle = g3; ctx.fillRect(0, 0, VW, VH);
+    }
   } else if (w2 === 'snow') {
     ctx.fillStyle = 'rgba(242,247,255,0.85)';
     for (let i = 0; i < 64; i++) {
