@@ -305,7 +305,7 @@ const PAL = { r: 285, gapA: 0.14, cost: { wood: 80, stone: 40 }, gateHp: 500, re
 const PAL_GATE = { x: 0, y: 0 }; // genWorld'de doldurulur
 // Karakol suru: sancak merkezli halka, kapısı köye bakan yönde.
 // SADECE kendi taş suru olmayan karakollarda (kale/lejyonun zaten gerçek surları + onarılır kapıları var).
-const OP_WALL = { r: 200, gapA: 0.22, cost: { wood: 120, stone: 60, gold: 40 }, gateHp: 450, repair: { wood: 40, stone: 20 } };
+const OP_WALL = { r: 265, gapA: 0.17, cost: { wood: 120, stone: 60, gold: 40 }, gateHp: 450, repair: { wood: 40, stone: 20 } };
 const OP_WALL_SITES = ['camp1'];
 const angDiff = (a, b) => { let d = Math.abs(a - b) % TAU; return d > Math.PI ? TAU - d : d; };
 // Lejyon karargâhı (tier 3, kuzeydoğu)
@@ -642,8 +642,8 @@ const PAL2 = { cost: { stone: 120, wood: 60, iron: 10 }, gateHp: 1200 };
 // Köy genişletme kademeleri: her biri yeni inşa arsaları açar (sur içinde kalır)
 const EXPANSIONS = [
   // arsa yarıçapları sur - ~90px: bina ile duvar arasında geçilebilir koridor kalır (sıkışma fix)
-  { cost: { wood: 60, stone: 40, gold: 50 }, plots: [[-253, -104], [256, -112], [-244, 133], [250, 145]] },   // sur 365'e genişler
-  { cost: { wood: 150, stone: 100, gold: 150 }, plots: [[0, -335], [0, 335], [-276, -204], [281, 208]] },     // sur 445'e genişler
+  { cost: { wood: 60, stone: 40, gold: 50 }, plots: [[122, 239], [-245, 109], [-245, -109], [122, -239]] },   // 2. halka (r268) — sur 365'e genişler
+  { cost: { wood: 150, stone: 100, gold: 150 }, plots: [[-118, 324], [-118, -324], [322, 124], [322, -124]] }, // 3. halka (r345) — sur 445'e genişler
 ];
 // Köylü işleri (Köylü Evi'ne atanır)
 const VILLAGER_JOBS = {
@@ -784,7 +784,9 @@ function shoreX(y) { return 150 + 45 * Math.sin(y * 0.005) + 25 * Math.sin(y * 0
 function genWorld() {
   // İnşa arsaları (kamp ateşi çevresi) — HER ARSANIN NE OLACAĞI ÖNCEDEN BELLİ:
   // menü yok; gerekli kaynakları getirip yanında durursun, kendiliğinden inşa olur
-  const P = [[-105, -75], [115, -65], [-115, 95], [120, 105], [0, -155], [-190, 10], [195, 20]]; // dış ikili içeri: sur koridoru açık
+  // Halka düzeni: binalar arası ≥110px (çap 60 + geçiş koridoru), sur ile bina kenarı ≥70px.
+  // Kapı doğuda (0°) olduğu için 40°-320° yayına dizilir, giriş koridoru boş kalır.
+  const P = [[134, 112], [9, 175], [-119, 128], [-175, 0], [-119, -128], [9, -175], [134, -112]];
   const PLAN = ['sawmill', 'blacksmith', 'barracks', 'watchtower', 'house', 'siege', 'hunter'];
   P.forEach(([ox, oy], i) => G.plots.push({ x: CAMPFIRE.x + ox, y: CAMPFIRE.y + oy, built: null, plan: PLAN[i] }));
 
@@ -1891,8 +1893,8 @@ function load() {
   if (s.bplots) s.bplots.forEach((bp, i) => {
     if (!bp) return;
     let pl = bp.x !== undefined ? G.plots.find(p2 => p2.x === bp.x && p2.y === bp.y) : G.plots[i];
-    if (!pl && bp.x !== undefined) { // arsa konumları güncellendiyse (v2.8e içeri çekme) en yakına otur
-      let bd2 = 80;
+    if (!pl && bp.x !== undefined) { // arsa düzeni değiştiyse (halka yerleşimi) en yakın BOŞ arsaya otur
+      let bd2 = 260;
       for (const p2 of G.plots) { if (p2.built) continue; const dd2 = dist(bp.x, bp.y, p2.x, p2.y); if (dd2 < bd2) { bd2 = dd2; pl = p2; } }
     }
     if (!pl || pl.built) return;
@@ -4681,8 +4683,8 @@ worldCv.addEventListener('pointerdown', e => {
 setInterval(() => { if (!elWorldOverlay.classList.contains('hidden')) drawWorld(); }, 120);
 
 // ---------- Karakollar (fethedilen yerler) ----------
-const OUTPOST_PLOT_OFFS = [[-85, 60], [90, 65], [0, 110]];
-const OUTPOST_PLOT_MORE = { 2: [[-105, -60], [110, -55]], 3: [[0, -105], [160, 30]] }; // karakol Sv.2/Sv.3'te açılan arsalar
+const OUTPOST_PLOT_OFFS = [[135, 66], [-94, 117], [-94, -117]];                        // sancak çevresi halkası (r150)
+const OUTPOST_PLOT_MORE = { 2: [[34, 146], [34, -146]], 3: [[-150, 0], [135, -66]] };  // karakol Sv.2/Sv.3'te açılan arsalar
 const OUTPOST_BUILDS = ['house', 'watchtower', 'hunter', 'sawmill', 'depot']; // karakolda kurulabilenler
 const OUTPOST_UPG = [null, { wood: 80, stone: 60, gold: 80 }, { wood: 160, stone: 120, gold: 160, iron: 10 }]; // Sv2, Sv3
 const outpostBannerHp = lv => 300 + 200 * (lv - 1);
