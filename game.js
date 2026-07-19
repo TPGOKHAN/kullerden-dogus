@@ -2483,9 +2483,21 @@ function updateHUD() {
 function openPanel(thing) {
   G.panelFor = thing;
   elPanel.classList.remove('hidden');
+  $('panelBack').classList.remove('hidden');
+  elPanel.scrollTop = 0;
   renderPanel();
 }
-function closePanel() { G.panelFor = null; elPanel.classList.add('hidden'); }
+function closePanel() {
+  G.panelFor = null;
+  elPanel.classList.add('hidden');
+  $('panelBack').classList.add('hidden');
+}
+// Boşluğa tıklama paneli kapatır (seçim bekleyen olay panelleri hariç)
+$('panelBack').addEventListener('pointerdown', e => {
+  e.stopPropagation(); e.preventDefault();
+  if (G.panelFor && G.panelFor.event) return; // önce bir seçenek seçilmeli
+  closePanel();
+});
 $('panelClose').addEventListener('click', closePanel);
 
 function pitem(name, desc, cost, btnText, enabled, onClick) {
@@ -2499,6 +2511,8 @@ function pitem(name, desc, cost, btnText, enabled, onClick) {
 }
 function renderPanel() {
   if (!G.panelFor) return;
+  if (elPanel.classList.contains('hidden')) elPanel.classList.remove('hidden');
+  $('panelBack').classList.remove('hidden'); // doğrudan G.panelFor atanan yerlerde de katman açılsın
   elPanelBody.innerHTML = '';
   const th = G.panelFor;
   if (th.gearPage) { // 🎒 Kuşam & Çanta: Archero tarzı donatma (oyuncu + komutanlar)
