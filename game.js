@@ -89,28 +89,28 @@ if (VISIT || ISLAND) MENU_RESUME = true; // ziyaret/ada: menüsüz doğrudan dü
 // FANTEZİ CİHANI: bölgeler + vilayetler + her vilayetin kendi IRK'ı (renk/silah/dövüş tarzı farklı)
 const WORLD_COUNTRIES = {
   // Renkler cihan haritasındaki biyomlardır: çöl / bozkır / bataklık / volkanik dağ / buzul
-  kul:   { name: 'Kül Yakası',  flag: '🔥', lx: 235, ly: 560, col: '#c9a15e', edge: '#8a6a35' },
-  orta:  { name: 'Ortadüzlük',  flag: '🌾', lx: 495, ly: 480, col: '#7c9e4c', edge: '#4e6b2c' },
-  sis:   { name: 'Sisbatak',    flag: '🌫️', lx: 760, ly: 555, col: '#5b8266', edge: '#33543f' },
-  demir: { name: 'Demirdağlar', flag: '⛰️', lx: 190, ly: 120, col: '#8a5c45', edge: '#553326' },
-  buz:   { name: 'Buzyaka',     flag: '❄️', lx: 610, ly: 60,  col: '#cfdfe8', edge: '#8ba7b8' },
+  kul:   { name: 'Kül Yakası',  flag: '🔥', lx: 235, ly: 677, col: '#c9a15e', edge: '#8a6a35' },
+  orta:  { name: 'Ortadüzlük',  flag: '🌾', lx: 495, ly: 581, col: '#7c9e4c', edge: '#4e6b2c' },
+  sis:   { name: 'Sisbatak',    flag: '🌫️', lx: 760, ly: 671, col: '#5b8266', edge: '#33543f' },
+  demir: { name: 'Demirdağlar', flag: '⛰️', lx: 190, ly: 145, col: '#8a5c45', edge: '#553326' },
+  buz:   { name: 'Buzyaka',     flag: '❄️', lx: 610, ly: 73,  col: '#cfdfe8', edge: '#8ba7b8' },
 };
 const WORLD_PROVINCES = [
   // { id, name, country, race, wx/wy (cihan haritası), tier (zorluk), links (komşular) }
-  { id: 'koryurt',   name: 'Köryurt',       country: 'kul',   race: 'barbar',    wx: 320, wy: 470, tier: 1,  links: ['kulpinar', 'kumtepe', 'yelovasi'] },
-  { id: 'kulpinar',  name: 'Külpınar',      country: 'kul',   race: 'mizrakli',  wx: 218, wy: 415, tier: 2,  links: ['koryurt', 'kumtepe', 'demirkapi'] },
-  { id: 'kumtepe',   name: 'Kumtepe',       country: 'kul',   race: 'col',       wx: 150, wy: 505, tier: 3,  links: ['koryurt', 'kulpinar'] },
-  { id: 'yelovasi',  name: 'Yel Ovası',     country: 'orta',  race: 'atli',      wx: 432, wy: 392, tier: 4,  links: ['koryurt', 'gunbatar', 'arenakent'] },
-  { id: 'gunbatar',  name: 'Günbatar',      country: 'orta',  race: 'samuray',   wx: 468, wy: 288, tier: 5,  links: ['yelovasi', 'demirkapi', 'buzhisar'] },
-  { id: 'sazlik',    name: 'Sazlıkköy',     country: 'sis',   race: 'kurt',      wx: 662, wy: 498, tier: 5,  links: ['arenakent', 'karabatak'] },
-  { id: 'arenakent', name: 'Arenakent',     country: 'orta',  race: 'gladyator', wx: 558, wy: 428, tier: 6,  links: ['yelovasi', 'sazlik'] },
-  { id: 'karabatak', name: 'Karabatak',     country: 'sis',   race: 'golge',     wx: 788, wy: 462, tier: 6,  links: ['sazlik', 'yesilvadi'] },
-  { id: 'demirkapi', name: 'Demirkapı',     country: 'demir', race: 'tasdev',    wx: 252, wy: 262, tier: 7,  links: ['kulpinar', 'gunbatar', 'korukale'] },
-  { id: 'korukale',  name: 'Korukale',      country: 'demir', race: 'ates',      wx: 158, wy: 182, tier: 8,  links: ['demirkapi'] },
-  { id: 'yesilvadi', name: 'Yeşilvadi',     country: 'sis',   race: 'orman',     wx: 826, wy: 342, tier: 8,  links: ['karabatak', 'kiragi'] },
-  { id: 'buzhisar',  name: 'Buzhisar',      country: 'buz',   race: 'buz',       wx: 556, wy: 168, tier: 8,  links: ['gunbatar', 'kiragi', 'tahtkaya'] },
-  { id: 'kiragi',    name: 'Kırağı Geçidi', country: 'buz',   race: 'buz',       wx: 702, wy: 128, tier: 9,  links: ['buzhisar', 'yesilvadi', 'tahtkaya'] },
-  { id: 'tahtkaya',  name: 'Taht Kayası',   country: 'buz',   race: 'golge',     wx: 428, wy: 84,  tier: 10, links: ['buzhisar', 'kiragi'] },
+  { id: 'koryurt',   name: 'Köryurt',       country: 'kul',   race: 'barbar',    wx: 320, wy: 569, tier: 1,  links: ['kulpinar', 'kumtepe', 'yelovasi'] },
+  { id: 'kulpinar',  name: 'Külpınar',      country: 'kul',   race: 'mizrakli',  wx: 218, wy: 502, tier: 2,  links: ['koryurt', 'kumtepe', 'demirkapi'] },
+  { id: 'kumtepe',   name: 'Kumtepe',       country: 'kul',   race: 'col',       wx: 150, wy: 611, tier: 3,  links: ['koryurt', 'kulpinar'] },
+  { id: 'yelovasi',  name: 'Yel Ovası',     country: 'orta',  race: 'atli',      wx: 432, wy: 474, tier: 4,  links: ['koryurt', 'gunbatar', 'arenakent'] },
+  { id: 'gunbatar',  name: 'Günbatar',      country: 'orta',  race: 'samuray',   wx: 468, wy: 348, tier: 5,  links: ['yelovasi', 'demirkapi', 'buzhisar'] },
+  { id: 'sazlik',    name: 'Sazlıkköy',     country: 'sis',   race: 'kurt',      wx: 662, wy: 602, tier: 5,  links: ['arenakent', 'karabatak'] },
+  { id: 'arenakent', name: 'Arenakent',     country: 'orta',  race: 'gladyator', wx: 558, wy: 518, tier: 6,  links: ['yelovasi', 'sazlik'] },
+  { id: 'karabatak', name: 'Karabatak',     country: 'sis',   race: 'golge',     wx: 788, wy: 559, tier: 6,  links: ['sazlik', 'yesilvadi'] },
+  { id: 'demirkapi', name: 'Demirkapı',     country: 'demir', race: 'tasdev',    wx: 252, wy: 317, tier: 7,  links: ['kulpinar', 'gunbatar', 'korukale'] },
+  { id: 'korukale',  name: 'Korukale',      country: 'demir', race: 'ates',      wx: 158, wy: 220, tier: 8,  links: ['demirkapi'] },
+  { id: 'yesilvadi', name: 'Yeşilvadi',     country: 'sis',   race: 'orman',     wx: 826, wy: 414, tier: 8,  links: ['karabatak', 'kiragi'] },
+  { id: 'buzhisar',  name: 'Buzhisar',      country: 'buz',   race: 'buz',       wx: 556, wy: 203, tier: 8,  links: ['gunbatar', 'kiragi', 'tahtkaya'] },
+  { id: 'kiragi',    name: 'Kırağı Geçidi', country: 'buz',   race: 'buz',       wx: 702, wy: 155, tier: 9,  links: ['buzhisar', 'yesilvadi', 'tahtkaya'] },
+  { id: 'tahtkaya',  name: 'Taht Kayası',   country: 'buz',   race: 'golge',     wx: 428, wy: 102,  tier: 10, links: ['buzhisar', 'kiragi'] },
 ];
 // ---------- IRKLAR: her vilayetin halkı farklı savaşır (renk, silah, stat çarpanları) ----------
 const RACES = {
@@ -266,9 +266,12 @@ const SFX = {
 // ---------- CFG: tüm oyun verisi ----------
 // Büyük bölge haritası (M&B hissi): lokasyonlar birbirinden uzak, aralarında yollar
 // Doğudaki 4800+ şeridi prosedürel mağara odası için ayrılmıştır (haritada görünmez)
-const WORLD = { w: 6400, h: 3200 };
+// Mağara şeridi doğuda: zindan 3 kat büyüdüğü için dünya genişliği ona göre.
+// (Bölge haritası OVERWORLD_W'yi kullandığından üst dünya görüntüsü değişmez.)
+const WORLD = { w: 9100, h: 3200 };
 let OVERWORLD_W = 4800; // ada modunda tüm haritaya genişler
-const CAVE_AREA = { x0: 4980, y0: 220, w: 1360, h: 1180 }; // prosedürel dungeon alanı
+// Zindan ~3 kat büyütüldü (oda ve koridor genişlikleri ordu geçemiyordu)
+const CAVE_AREA = { x0: 4960, y0: 130, w: 4020, h: 2940 }; // prosedürel dungeon alanı
 const CAMPFIRE = { x: 700, y: 1600 };                 // Köy (güneybatı, su kıyısına yakın)
 const FOREST = { x: 1750, y: 720 };                   // Balta Ormanı (odun bölgesi)
 const QUARRY = { x: 1500, y: 2550 };                  // Taş Ocağı (taş bölgesi)
@@ -922,7 +925,26 @@ function genWorld() {
   if (rings >= 2) addFortRing(240, 178, 'gate2', 1100 * ms);
   if (rings >= 3) addFortRing(132, 98, 'gate3', 850 * ms);
   G.structures.push({ kind: 'chest', x: rings >= 2 ? FORT.cx + 48 : FORT.x1 - 90, y: FORT.cy, hp: 1, maxHp: 1, alive: true });
-  for (let gi = 0; gi < 12; gi++) spawnEnemy('guard', rr(FORT.x0 + 110, FORT.x1 - 110), rr(FORT.y0 + 90, FORT.y1 - 90), 'fort');
+  // MUHAFIZLAR HER SUR BANDINA dağıtılır. Rastgele kutu içine serpiştirmek, iç
+  // sur halkaları varken dış ve orta bantları boş bırakıyordu — oyuncu ilk kapıyı
+  // kırıp kimseyle karşılaşmadan ikinci kapıya yürüyordu.
+  {
+    const bantlar = rings >= 3 ? [[240, 178, 260, 200], [132, 98, 240, 178], [0, 0, 132, 98]]
+                  : rings >= 2 ? [[240, 178, 260, 200], [0, 0, 240, 178]]
+                  : [[0, 0, 260, 200]];
+    const kisi = Math.ceil(12 / bantlar.length);
+    for (const [ihw, ihh, dhw, dhh] of bantlar) {
+      for (let gi = 0; gi < kisi; gi++) {
+        // banttan rastgele nokta: dış kutuda tut, iç kutuya girme
+        let px = 0, py = 0, dene = 0;
+        do {
+          px = FORT.cx + rr(-(dhw - 45), dhw - 45);
+          py = FORT.cy + rr(-(dhh - 40), dhh - 40);
+        } while (ihw && Math.abs(px - FORT.cx) < ihw + 40 && Math.abs(py - FORT.cy) < ihh + 40 && dene++ < 40);
+        spawnEnemy('guard', px, py, 'fort');
+      }
+    }
+  }
   spawnEnemy('chief', rings >= 2 ? FORT.cx - 50 : FORT.x0 + 340, FORT.cy + 10, 'fort');
 
   // Lejyon karargâhı (tier 3): taş surlar + güneye bakan çelik kapı
@@ -1063,21 +1085,96 @@ function wallRoute(x, y, tx, ty, isEnemy) {
       if (rg.village && rg.gateUp) return { attackVillageGate: true, ring: rg };
       if (rg.oGate) return { attackGate: rg.oGate, ring: rg };
     }
+    // Kapıdan geçiş MESAFE eşiğiyle yönetilir, açı eşiğiyle DEĞİL.
+    // Açı testi ("kapı koridorunda mıyım") birimi eşikte gidip gelmeye sokuyordu:
+    // 0.08 rad'ın altında hedef dışarısı, üstünde içerisi oluyor, birim saniyede
+    // birkaç kez fikir değiştirip kapının önünde sallanıyordu ("duvarın kenarında
+    // bekliyor"). Kapı ağzı SABİT bir nokta olarak hedeflenir; oraya varılınca
+    // aynı eksende karşı tarafa geçilir — geri dönüş yok, salınım yok.
+    const kapi = (rd) => ({ wx: rg.cx + Math.cos(rg.gap) * rd, wy: rg.cy + Math.sin(rg.gap) * rd });
     if (uIn) {
-      // İçeriden çıkış İKİ adımdır. Doğrudan sur dışındaki kapı noktasına yönelirsek
-      // çizgi, kapı boşluğunun yanındaki sur parçasını keser: birim duvara yapışır,
-      // "kapı beni itiyor" görüntüsü çıkar. Önce kapının İÇ ağzına hizalan, sonra çık.
-      const ia = Math.atan2(y - rg.cy, x - rg.cx);
-      const koridorda = angDiff(ia, rg.gap) < (rg.gapA || 0.12) * 0.75;
-      const rr2 = koridorda ? rg.r + 60 : rg.r - 70;
-      return { wx: rg.cx + Math.cos(rg.gap) * rr2, wy: rg.cy + Math.sin(rg.gap) * rr2 };
+      const ic = kapi(rg.r - 30);                       // kapının iç ağzı
+      const w = dist(x, y, ic.wx, ic.wy) > 70 ? ic : kapi(rg.r + 150);
+      w.ring = rg; w.out = true; return w;              // navMove burada kapı kilidi kurar
     }
-    // dışarıdan giriş: kapı açısına yörünge; koridora gelince kapının İÇ noktasına düz (boşluktan geçer)
-    return orbitToGap(x, y, rg) ||
-      { wx: rg.cx + Math.cos(rg.gap) * (rg.r - 60), wy: rg.cy + Math.sin(rg.gap) * (rg.r - 60) };
+    const dis = kapi(rg.r + 40);                        // kapının dış ağzı
+    const w2 = dist(x, y, dis.wx, dis.wy) > 70 ? (orbitToGap(x, y, rg) || dis) : kapi(rg.r - 150);
+    w2.ring = rg; w2.out = false; return w2;
   }
   return rectRoute(x, y, tx, ty); // dairesel sur yoksa taş duvarları dolaş
 }
+// ============ ORTAK YÜRÜYÜŞ: navMove ============
+// Birimlerin "duvara yapışma" ve "binanın etrafında sonsuz daire" sorunlarının
+// KALICI çözümü. Üç katman:
+//   1) wallRoute/rectRoute ile kaba rota (sur kapısı, kale köşesi)
+//   2) İLERLEME ölçümü — hareket ediyor ama YAKLAŞMIYORSA takılmış sayılır
+//      (daire çizen birim hareket ettiği için "duruyor mu" testine yakalanmıyordu)
+//   3) Takılınca ENGEL TAKİBİ: collide'ın birimi ittiği yön engelin normalidir;
+//      birim o normale DİK yönde (hep aynı tarafa) kayarak engeli dolaşır.
+//      Bu, dikdörtgen/daire/bina/kaynak fark etmeksizin her engelde çalışır ve
+//      yön bir kez seçildiği için birim geri dönüp döngüye girmez.
+function navMove(u, tx, ty, spd, dt, r, isEnemy) {
+  const sonMesafe = dist(u.x, u.y, tx, ty);
+  // Ara hedef: sur kapısı / kale köşesi. İLERLEME BUNA GÖRE ölçülür — kapıya
+  // yönelmek çoğu zaman NİHAİ hedeften uzaklaşmak demektir, son hedefe bakan
+  // sayaç birimi daha kapıya varmadan "takıldı" sayıp işi iptal ettiriyordu.
+  let gx = tx, gy = ty;
+  const rt = wallRoute(u.x, u.y, tx, ty, !!isEnemy);
+  if (rt && rt.wx !== undefined) { gx = rt.wx; gy = rt.wy; }
+  // KAPI KİLİDİ: sur çizgisinin tam üstündeki birim, her karede "içerideyim /
+  // dışarıdayım" arasında gidip gelip hedefini ters çeviriyordu — bir kare kapıya,
+  // sonraki kare surun etrafına yöneliyor, net ilerleme sıfır oluyordu ("duvarın
+  // kenarında bekliyor"). Geçiş bir kez başlayınca YÖN KİLİTLENİR; birim surun
+  // öbür tarafına net geçene (ya da 12 sn geçene) dek kapıdan başka yere bakmaz.
+  if (rt && rt.ring) {
+    if (!u.nvLock || u.nvLock.ring !== rt.ring || u.nvLock.out !== rt.out) u.nvLock = { ring: rt.ring, out: rt.out, t: 12 };
+  }
+  if (u.nvLock) {
+    const L = u.nvLock, rg = L.ring;
+    L.t -= dt;
+    const d2 = dist(u.x, u.y, rg.cx, rg.cy);
+    const gecti = L.out ? d2 > rg.r + 60 : d2 < rg.r - 60;
+    if (gecti || L.t <= 0) u.nvLock = null;
+    else {
+      const ua = Math.atan2(u.y - rg.cy, u.x - rg.cx);
+      const yari = (rg.gapA || 0.12) * 0.6;
+      const rd = L.out
+        ? (d2 < rg.r - 20 && angDiff(ua, rg.gap) > yari ? rg.r - 30 : rg.r + 150)
+        : (d2 > rg.r + 20 && angDiff(ua, rg.gap) > yari ? rg.r + 40 : rg.r - 150);
+      gx = rg.cx + Math.cos(rg.gap) * rd; gy = rg.cy + Math.sin(rg.gap) * rd;
+    }
+  }
+  if (u.nvGx === undefined || dist(gx, gy, u.nvGx, u.nvGy) > 45) {  // ara hedef değişti
+    u.nvGx = gx; u.nvGy = gy; u.nvBest = undefined;
+  }
+  const dd = dist(u.x, u.y, gx, gy);
+  let ang = Math.atan2(gy - u.y, gx - u.x);
+  // ilerleme takibi (engel takibi sırasında ölü sayaç durur: dolanmak ilerlemedir)
+  if (u.nvBest === undefined || dd < u.nvBest - 2) { u.nvBest = dd; u.nvStuck = 0; u.nvDead = 0; }
+  else {
+    u.nvStuck = (u.nvStuck || 0) + dt;
+    if (!((u.nvWf || 0) > 0)) u.nvDead = (u.nvDead || 0) + dt;
+  }
+  if ((u.nvWf || 0) > 0) u.nvWf -= dt;
+  else if ((u.nvStuck || 0) > 0.7) {              // takıldı: engel takibine geç
+    u.nvWf = 2.6;
+    u.nvDir = (u.nvFlip = !u.nvFlip) ? 1 : -1;    // her denemede öbür yana dolan
+    u.nvStuck = 0;
+  }
+  const sx = Math.cos(ang) * spd * dt, sy = Math.sin(ang) * spd * dt;
+  let [nx, ny] = collide(u.x + sx, u.y + sy, r, isEnemy);
+  if ((u.nvWf || 0) > 0) {
+    const px = nx - (u.x + sx), py = ny - (u.y + sy);   // collide'ın ittiği vektör = engel normali
+    if (Math.hypot(px, py) > 0.05) {
+      const ta = Math.atan2(py, px) + u.nvDir * Math.PI / 2;
+      const [wx2, wy2] = collide(u.x + Math.cos(ta) * spd * dt, u.y + Math.sin(ta) * spd * dt, r, isEnemy);
+      if (dist(wx2, wy2, u.x, u.y) > spd * dt * 0.3) { nx = wx2; ny = wy2; ang = ta; }
+    }
+  }
+  u.x = nx; u.y = ny; u.dir = ang;
+  return sonMesafe;
+}
+const navReset = u => { u.nvBest = undefined; u.nvStuck = 0; u.nvDead = 0; u.nvWf = 0; u.nvGx = undefined; u.nvLock = null; };
 // Zindan kafesi: esir komutanların tutulduğu yer (site merkezine göre sabit konum)
 const JAIL_OFFS = { camp1: [150, 70], fort: [180, 120], legion: [180, 120] };
 const jailPos = site => { const O = OUTPOSTS[site], o = JAIL_OFFS[site] || [150, 70]; return { x: O.x + o[0], y: O.y + o[1] }; };
@@ -2138,19 +2235,8 @@ function cmdIndepIdle(c, dt) {
     wx = c.wp[0]; wy = c.wp[1]; spd = C.speed * 0.7;
   }
   if (wx === null) return;
-  const ang = Math.atan2(wy - c.y, wx - c.x);
-  const rt = wallRoute(c.x, c.y, wx, wy, false);
-  const tx2 = rt && rt.wx !== undefined ? rt.wx : wx, ty2 = rt && rt.wx !== undefined ? rt.wy : wy;
-  let a2 = Math.atan2(ty2 - c.y, tx2 - c.x);
-  if ((c.sideT || 0) > 0) { c.sideT -= dt; a2 += c.sideDir * 1.35; } // takıldıysa bir süre yandan dolan
-  const ox = c.x, oy = c.y;
-  const [nx2, ny2] = collide(c.x + Math.cos(a2) * spd * dt, c.y + Math.sin(a2) * spd * dt, 13);
-  c.x = nx2; c.y = ny2; c.walk += dt * 9; c.dir = ang;
-  // takılma dedektörü: yerinde sayıyorsa yönü kaydır (duvar/bina köşesinde kalmasın)
-  if (dist(ox, oy, c.x, c.y) < spd * dt * 0.35) {
-    c.stuckT = (c.stuckT || 0) + dt;
-    if (c.stuckT > 0.5 && (c.sideT || 0) <= 0) { c.stuckT = 0; c.sideT = 1.6; c.sideDir = rng() < 0.5 ? 1 : -1; }
-  } else c.stuckT = 0;
+  navMove(c, wx, wy, spd, dt, 13, false);
+  c.walk += dt * 9;
 }
 // Öz ordu: komutanı izler, yakınındaki düşmanla savaşır; bağımsızken keseden asker alınır
 function cmdTroopsUpdate(c, dt) {
@@ -3497,7 +3583,26 @@ function renderPanel() {
   } else if (th.trade) {
     elPanelTitle.textContent = '🐪 Göçebe Tüccar';
     elPanelBody.innerHTML = '<div class="pdesc" style="margin-bottom:8px">"Hoş geldin savaşçı! Çölün en iyi fiyatları bende."</div>';
-    const deal = (name, desc, check, apply) => pitem(name, desc, null, 'Takas', check(), () => { apply(); SFX.coin(); });
+    // Takas butonu BASILI TUTULUNCA hızlıca birer birer devam eder (75 hurdayı
+    // 15 kez tıklamak yerine parmağını basılı tut).
+    const deal = (name, desc, check, apply) => {
+      pitem(name, desc, null, 'Takas', check(), () => { apply(); SFX.coin(); });
+      const btn = elPanelBody.lastElementChild && elPanelBody.lastElementChild.querySelector('button');
+      if (!btn) return;
+      let tekrar = null, ilk = null;
+      const dur = () => { clearTimeout(ilk); clearInterval(tekrar); ilk = tekrar = null; };
+      const bas = () => {
+        dur();
+        ilk = setTimeout(() => {                       // 350 ms basılı tutunca seri başlar
+          tekrar = setInterval(() => {
+            if (!check() || !document.body.contains(btn)) { dur(); renderPanel(); return; }
+            apply(); SFX.coin(); updateHUD();
+          }, 110);
+        }, 350);
+      };
+      btn.addEventListener('pointerdown', bas);
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, () => { if (tekrar) { dur(); renderPanel(); } else dur(); });
+    };
     deal('🔩 5 hurda sat', '+12 🪙', () => G.res.scrap >= 5, () => { G.res.scrap -= 5; gain({ gold: 12 }, G.player.x, G.player.y - 30); });
     deal('⚙️ 1 demir al', '-10 🪙', () => G.res.gold >= 10, () => { G.res.gold -= 10; gain({ iron: 1 }, G.player.x, G.player.y - 30); });
     deal('⚙️ 5 demir al (toptan)', '-45 🪙', () => G.res.gold >= 45, () => { G.res.gold -= 45; gain({ iron: 5 }, G.player.x, G.player.y - 30); });
@@ -4764,7 +4869,7 @@ function clearCave() {
 // Prosedürel zindan: hücre ızgarasında odalar açılır, komşular L koridorlarla bağlanır,
 // kapalı kalan hücreler yatay şeritler hâlinde duvara dönüşür (az sayıda dikdörtgen = hızlı çarpışma).
 function buildDungeon(A) {
-  const CELL = 40;
+  const CELL = 112;   // hücre boyu 40 → 112: odalar ve 2 hücrelik koridorlar ~3x geniş
   const cols = Math.floor(A.w / CELL), rows = Math.floor(A.h / CELL);
   const acik = Array.from({ length: rows }, () => new Array(cols).fill(false));
   const GX = 4, GY = 3;                                   // 12 oda hücresi
@@ -4857,13 +4962,14 @@ function enterCave() {
   G.caveCrystals = [];
   for (let oi = 1; oi < odalar.length; oi++) {
     const p2 = dunya(odalar[oi]);
-    G.caveTorches.push({ x: p2.x + rr(-40, 40), y: p2.y - rr(20, 60) }); // her odada meşale
+    for (let m = 0; m < 3; m++)                                        // büyüyen odalarda 3 meşale
+      G.caveTorches.push({ x: p2.x + rr(-150, 150), y: p2.y - rr(20, 150) });
     if (oi % 2 === 0)                                                     // bazı odalarda ışıldayan kristal kümesi
-      G.caveCrystals.push({ x: p2.x + rr(-90, 90), y: p2.y + rr(30, 80), n: ri(2, 3), f: rng() * 6 });
+      G.caveCrystals.push({ x: p2.x + rr(-200, 200), y: p2.y + rr(40, 190), n: ri(2, 4), f: rng() * 6 });
     if (oi === odalar.length - 1) continue;                              // boss odasına aşağıda bakılır
     const adet = Math.max(1, Math.round(kalan / (odalar.length - oi)));
     for (let i = 0; i < adet && kalan > 0; i++, kalan--)
-      spawnEnemy(pool[Math.floor(Math.random() * pool.length)], p2.x + rr(-70, 70), p2.y + rr(-50, 50), 'cave');
+      spawnEnemy(pool[Math.floor(Math.random() * pool.length)], p2.x + rr(-190, 190), p2.y + rr(-150, 150), 'cave');
   }
   spawnEnemy('bear', bp.x - 40, bp.y, 'cave');
   for (let i = 0; i < 2; i++) spawnEnemy('brute', bp.x + rr(-70, 70), bp.y + rr(-60, 60), 'cave'); // boss muhafızları
@@ -5015,11 +5121,11 @@ function provState(p) {
 // Stilize İskandinavya + Baltık kıyıları (1000×620 cihan tuvali)
 // Fantezi kıtası: 5 diyar tek kara parçasını paylaşır (deniz sadece kenarlarda)
 const WORLD_POLY = {
-  demir: [[60, 320], [52, 230], [78, 140], [128, 72], [210, 44], [300, 46], [356, 88], [352, 160], [318, 230], [330, 300], [296, 340], [200, 352], [110, 348]],
-  buz:   [[356, 88], [300, 46], [368, 22], [470, 12], [580, 16], [690, 26], [790, 52], [850, 100], [846, 168], [790, 208], [700, 224], [600, 238], [500, 232], [420, 210], [352, 160]],
-  orta:  [[318, 230], [352, 160], [420, 210], [500, 232], [600, 238], [640, 300], [636, 380], [600, 452], [520, 496], [430, 500], [372, 452], [340, 380], [330, 300]],
-  sis:   [[600, 238], [700, 224], [790, 208], [846, 168], [900, 230], [928, 330], [912, 430], [860, 520], [780, 570], [690, 580], [630, 540], [600, 452], [636, 380], [640, 300]],
-  kul:   [[330, 300], [340, 380], [372, 452], [430, 500], [420, 560], [350, 596], [250, 600], [150, 580], [80, 528], [56, 440], [110, 348], [200, 352], [296, 340]],
+  demir: [[60, 387], [52, 278], [78, 169], [128, 87], [210, 53], [300, 56], [356, 106], [352, 194], [318, 278], [330, 363], [296, 411], [200, 426], [110, 421]],
+  buz:   [[356, 106], [300, 56], [368, 27], [470, 15], [580, 19], [690, 31], [790, 63], [850, 121], [846, 203], [790, 252], [700, 271], [600, 288], [500, 281], [420, 254], [352, 194]],
+  orta:  [[318, 278], [352, 194], [420, 254], [500, 281], [600, 288], [640, 363], [636, 460], [600, 547], [520, 600], [430, 605], [372, 547], [340, 460], [330, 363]],
+  sis:   [[600, 288], [700, 271], [790, 252], [846, 203], [900, 278], [928, 399], [912, 520], [860, 629], [780, 690], [690, 702], [630, 653], [600, 547], [636, 460], [640, 363]],
+  kul:   [[330, 363], [340, 460], [372, 547], [430, 605], [420, 677], [350, 721], [250, 726], [150, 702], [80, 639], [56, 532], [110, 421], [200, 426], [296, 411]],
 };
 // Görünüm paketi (admin panelinden): oyunun prosedürel renk paleti değiştirilebilir
 let SKIN = {};
@@ -5032,7 +5138,15 @@ function applySkin() {
 applySkin();
 const elWorldOverlay = $('worldOverlay'), worldCv = $('worldCanvas');
 let worldScale = 1, worldPad = 0, worldOffX = 0;
-const WORLD_MAP_W = 1000, WORLD_MAP_H = 620;
+// Harita 4:3 — elle çizilmiş cihan haritası görseli (world-map.png) bu orana göre.
+const WORLD_MAP_W = 1000, WORLD_MAP_H = 750;
+// Kullanıcının hazırladığı harita görseli: klasöre world-map.png konursa cihan
+// haritası prosedürel çizim yerine BU görseli kullanır, etiket/vilayet noktaları
+// üstüne bindirilir. Dosya yoksa prosedürel ada çizimi devreye girer.
+const worldImg = new Image();
+let worldImgOk = false;
+worldImg.onload = () => { worldImgOk = worldImg.naturalWidth > 0; };
+worldImg.src = 'world-map.png';
 function openWorld(choose) {
   if (VISIT || ISLAND) { toast('Ziyaret/ada sırasında cihan seferi yapılamaz — önce eve dön', true); return; }
   G.worldChoose = !!choose;
@@ -5054,6 +5168,24 @@ function drawWorld() {
   worldCv.style.width = cw + 'px'; worldCv.style.height = ch + 'px';
   const m = worldCv.getContext('2d');
   m.setTransform(DPR * worldScale, 0, 0, DPR * worldScale, 0, 0);
+  // ---- HAZIR HARİTA GÖRSELİ ----
+  // Klasörde world-map.png varsa arazi çizimi ondan gelir; etiketler, yollar ve
+  // vilayet noktaları görselin ÜSTÜNE bindirilir (koordinatlar aynı kalır).
+  if (worldImgOk) {
+    m.drawImage(worldImg, 0, 0, WORLD_MAP_W, WORLD_MAP_H);
+    // fethedilen diyarların üstüne hafif altın vurgu + sınır
+    for (const [cid, poly] of Object.entries(WORLD_POLY)) {
+      if (!G.countryBonus[cid]) continue;
+      m.beginPath(); m.moveTo(poly[0][0], poly[0][1]);
+      for (let i = 1; i < poly.length; i++) m.lineTo(poly[i][0], poly[i][1]);
+      m.closePath();
+      m.fillStyle = 'rgba(255,215,120,0.16)'; m.fill();
+      m.strokeStyle = '#ffd97e'; m.lineWidth = 3; m.stroke();
+    }
+    m.textAlign = 'center';
+    ciz_etiket_ve_noktalar(m);
+    return;
+  }
   // ---- DERİN DENİZ ----
   const sg = m.createLinearGradient(0, 0, 0, WORLD_MAP_H);
   sg.addColorStop(0, '#10476e'); sg.addColorStop(0.55, '#0d3a5e'); sg.addColorStop(1, '#0a2f4d');
@@ -5157,9 +5289,9 @@ function drawWorld() {
   }
   // ---- NEHİRLER: dağlardan denize (haritaya ölçek ve yön duygusu katar) ----
   const NEHIRLER = [
-    [[300, 150], [340, 250], [378, 330], [396, 430], [408, 505], [392, 585]],
-    [[600, 240], [645, 330], [678, 420], [694, 505], [700, 572]],
-    [[240, 300], [196, 372], [152, 452], [116, 520], [92, 548]],
+    [[300, 181], [340, 302], [378, 399], [396, 520], [408, 611], [392, 708]],
+    [[600, 290], [645, 399], [678, 508], [694, 611], [700, 692]],
+    [[240, 363], [196, 450], [152, 547], [116, 629], [92, 663]],
   ];
   m.lineCap = 'round'; m.lineJoin = 'round';
   for (const nehir of NEHIRLER) {
@@ -5173,6 +5305,11 @@ function drawWorld() {
       m.lineWidth = gen; m.strokeStyle = renk; m.stroke();
     }
   }
+  m.textAlign = 'center';
+  ciz_etiket_ve_noktalar(m);
+}
+// Diyar etiketleri + yollar + vilayet noktaları (hem prosedürel hem görselli haritada aynı)
+function ciz_etiket_ve_noktalar(m) {
   m.textAlign = 'center';
   // diyar etiketleri + ilerleme
   for (const cid of Object.keys(WORLD_POLY)) {
@@ -6168,23 +6305,19 @@ function update(dt) {
   for (const b of G.buildings) {
     if (b.type !== 'house' || !b.villager) continue;
     if (b.vx === undefined) { b.vx = b.x + 26; b.vy = b.y + 26; b.vwT = 0; b.vwalk = 0; b.vdir = 0; b.vstate = null; b.vstuckT = 0; }
+    // Köylü ortak navMove'u kullanır: sur kapısından dolaşır, takılırsa engeli
+    // teğet boyunca dolanır. (b.nv* alanları navMove'un kendi durumu.)
+    if (b.nvHost === undefined) b.nvHost = { x: b.vx, y: b.vy, dir: 0 };
     const walkTo = (tx2, ty2, sp) => {
       const dd = dist(b.vx, b.vy, tx2, ty2);
-      if (dd > 14) {
-        b.vdir = Math.atan2(ty2 - b.vy, tx2 - b.vx);
-        const ox = b.vx, oy = b.vy;
-        [b.vx, b.vy] = collide(b.vx + Math.cos(b.vdir) * sp * dt, b.vy + Math.sin(b.vdir) * sp * dt, 10);
-        b.vwalk += dt * (sp > 100 ? 12 : 7);
-        // Takılma iki türlü olur: yerinde sayma VEYA hedefe hiç yaklaşamama.
-        // İkincisi bina etrafında sonsuz daire çizmektir — yerinde saymadığı için
-        // eski kontrol bunu göremiyordu.
-        if (b.vBestD === undefined || dd < b.vBestD - 2) { b.vBestD = dd; b.vstuckT = 0; }
-        else if (dist(ox, oy, b.vx, b.vy) < sp * dt * 0.2) b.vstuckT += dt * 2; // hem duruyor hem yaklaşamıyor
-        else b.vstuckT += dt;
-        return false;
-      }
-      b.vBestD = undefined;
-      return true;
+      if (dd <= 14) { navReset(b.nvHost); b.vstuckT = 0; b.vBestD = undefined; return true; }
+      const H = b.nvHost; H.x = b.vx; H.y = b.vy;
+      navMove(H, tx2, ty2, sp, dt, 10, false);
+      b.vx = H.x; b.vy = H.y; b.vdir = H.dir;
+      b.vwalk += dt * (sp > 100 ? 12 : 7);
+      // nvDead: engel takibi DAHİL hiç yaklaşamadığı süre → üst katman iş değiştirsin
+      b.vstuckT = H.nvDead || 0;
+      return false;
     };
     const scared = G.night && G.raidHappened;
     if (scared) { // evine sığın, iş bırakılır
@@ -6665,21 +6798,14 @@ function update(dt) {
       // formasyon: oyuncunun arkasında (sur araya girdiyse kapı ağzından dolaş)
       const a = p.dir + Math.PI, spread = (i - (G.soldiers.length - 1) / 2) * 0.7;
       let fx = p.x + Math.cos(a + spread) * 58, fy = p.y + Math.sin(a + spread) * 58;
-      const rt2 = wallRoute(s.x, s.y, fx, fy, false);
-      if (rt2 && rt2.wx !== undefined) { fx = rt2.wx; fy = rt2.wy; }
       const dd = dist(s.x, s.y, fx, fy);
       if (dd > 26) {
-        const ang = Math.atan2(fy - s.y, fx - s.x);
         const spd = dd > 300 ? SOLDIER.speed * 1.6 : SOLDIER.speed;
-        const [nx2, ny2] = collide(s.x + Math.cos(ang) * spd * dt, s.y + Math.sin(ang) * spd * dt, 12);
-        s.x = nx2; s.y = ny2; s.walk += dt * 10; s.dir = ang;
-        // bina etrafında dönüp duruyorsa (mesafe azalmıyorsa) safa geri çağır
-        if (s.bestD === undefined || dd < s.bestD - 3) { s.bestD = dd; s.stuckT = 0; }
-        else {
-          s.stuckT = (s.stuckT || 0) + dt;
-          if (s.stuckT > 2.5) { s.stuckT = 0; s.bestD = undefined; s.x = p.x + rr(-45, 45); s.y = p.y + rr(-45, 45); }
-        }
-      } else { s.bestD = undefined; s.stuckT = 0; }
+        navMove(s, fx, fy, spd, dt, 12, false);
+        s.walk += dt * 10;
+        // engel takibi bile sökemediyse (kapana kısılmış) safa ışınla
+        if ((s.nvDead || 0) > 3.5) { navReset(s); s.x = p.x + rr(-45, 45); s.y = p.y + rr(-45, 45); }
+      } else navReset(s);
       if (dd > 800) { s.x = p.x + rr(-30, 30); s.y = p.y + rr(-30, 30); }
       if (s.hp < s.maxHp) s.hp = Math.min(s.maxHp, s.hp + (s.tregen || SOLDIER.regen) * dt); // savaş dışı yenilenme
     }
@@ -6789,20 +6915,13 @@ function update(dt) {
       // formasyon: oyuncunun ÖNÜNDE yürür (öncü; sur araya girdiyse kapıdan dolaş)
       const spread = (i - (G.commanders.length - 1) / 2) * 0.8;
       let fx = p.x + Math.cos(p.dir + spread) * 64, fy = p.y + Math.sin(p.dir + spread) * 64;
-      const rt2 = wallRoute(c.x, c.y, fx, fy, false);
-      if (rt2 && rt2.wx !== undefined) { fx = rt2.wx; fy = rt2.wy; }
       const dd = dist(c.x, c.y, fx, fy);
       if (dd > 24) {
-        const ang = Math.atan2(fy - c.y, fx - c.x);
         const spd = dd > 300 ? C.speed * 1.6 : C.speed;
-        const [nx2, ny2] = collide(c.x + Math.cos(ang) * spd * dt, c.y + Math.sin(ang) * spd * dt, 13);
-        c.x = nx2; c.y = ny2; c.walk += dt * 10; c.dir = ang;
-        if (c.bestD === undefined || dd < c.bestD - 3) { c.bestD = dd; c.fStuck = 0; }
-        else {
-          c.fStuck = (c.fStuck || 0) + dt;
-          if (c.fStuck > 2.5) { c.fStuck = 0; c.bestD = undefined; c.x = p.x + rr(-45, 45); c.y = p.y + rr(-45, 45); }
-        }
-      } else { c.bestD = undefined; c.fStuck = 0; }
+        navMove(c, fx, fy, spd, dt, 13, false);
+        c.walk += dt * 10;
+        if ((c.nvDead || 0) > 3.5) { navReset(c); c.x = p.x + rr(-45, 45); c.y = p.y + rr(-45, 45); }
+      } else navReset(c);
       if (dd > 800) { c.x = p.x + rr(-30, 30); c.y = p.y + rr(-30, 30); }
       if (c.hp < c.maxHp) c.hp = Math.min(c.maxHp, c.hp + SOLDIER.regen * 1.5 * dt);
     }
@@ -6859,11 +6978,8 @@ function update(dt) {
         }
         continue;
       }
-      cv.dir = Math.atan2(ty4 - cv.y, tx4 - cv.x);
-      const rt4 = wallRoute(cv.x, cv.y, tx4, ty4, false);
-      if (rt4 && rt4.wx !== undefined) cv.dir = Math.atan2(rt4.wy - cv.y, rt4.wx - cv.x);
-      const [nx4, ny4] = collide(cv.x + Math.cos(cv.dir) * 74 * dt, cv.y + Math.sin(cv.dir) * 74 * dt, 14);
-      cv.x = nx4; cv.y = ny4; cv.walk += dt * 8;
+      navMove(cv, tx4, ty4, 74, dt, 14, false);
+      cv.walk += dt * 8;
       continue;
     }
     if (cv.supply) { // yardım kervanı: hedef üssün ambarına boşaltır
@@ -6877,11 +6993,8 @@ function update(dt) {
         save();
         continue;
       }
-      cv.dir = Math.atan2(sy3 - cv.y, sx3 - cv.x);
-      const rt3 = wallRoute(cv.x, cv.y, sx3, sy3, false); // sur varsa kapıdan dolaş
-      if (rt3 && rt3.wx !== undefined) cv.dir = Math.atan2(rt3.wy - cv.y, rt3.wx - cv.x);
-      const [nx3, ny3] = collide(cv.x + Math.cos(cv.dir) * 74 * dt, cv.y + Math.sin(cv.dir) * 74 * dt, 14);
-      cv.x = nx3; cv.y = ny3; cv.walk += dt * 8;
+      navMove(cv, sx3, sy3, 74, dt, 14, false);   // sur kapısından dolaşır, takılırsa engeli dolanır
+      cv.walk += dt * 8;
       continue;
     }
     const inside = G.palisade.built && dist(cv.x, cv.y, CAMPFIRE.x, CAMPFIRE.y) < palR();
@@ -6897,9 +7010,8 @@ function update(dt) {
       }
       continue;
     }
-    cv.dir = Math.atan2(wy2 - cv.y, wx2 - cv.x);
-    const [nx2, ny2] = collide(cv.x + Math.cos(cv.dir) * 72 * dt, cv.y + Math.sin(cv.dir) * 72 * dt, 14);
-    cv.x = nx2; cv.y = ny2; cv.walk += dt * 8;
+    navMove(cv, wx2, wy2, 72, dt, 14, false);
+    cv.walk += dt * 8;
   }
   G.caravans = G.caravans.filter(cv => !cv.dead);
 
@@ -6954,20 +7066,14 @@ function update(dt) {
         const pt = pts[((g.patI % pts.length) + pts.length) % pts.length];
         const dd = dist(g.x, g.y, pt[0], pt[1]);
         if (dd > 24) {
-          g.dir = Math.atan2(pt[1] - g.y, pt[0] - g.x);
-          const rt = wallRoute(g.x, g.y, pt[0], pt[1], false); // sur içinden geçmeye çalışmasın
-          if (rt && rt.wx !== undefined) g.dir = Math.atan2(rt.wy - g.y, rt.wx - g.x);
-          const [nx2, ny2] = collide(g.x + Math.cos(g.dir) * 72 * dt, g.y + Math.sin(g.dir) * 72 * dt, 12);
-          // Takılma sigortası İLERLEMEYE bakar, harekete değil: bina çevresinde tur atan
-          // birim sürekli hareket ettiği için "duruyor mu" testine yakalanmıyordu.
-          if (g.patBest === undefined || dd < g.patBest - 3) { g.patBest = dd; g.patStuck = 0; }
-          else g.patStuck = (g.patStuck || 0) + dt;
-          g.x = nx2; g.y = ny2; g.walk += dt * 6;
-          if (g.patStuck > 2) { g.patI += g.patDir; g.patStuck = 0; g.patBest = undefined; }
+          navMove(g, pt[0], pt[1], 72, dt, 12, false);
+          g.walk += dt * 6;
+          // engel takibi de sökemiyorsa sıradaki devriye noktasına geç
+          if ((g.nvDead || 0) > 2.6) { g.patI += g.patDir; navReset(g); }
         } else {
           g.patI += g.patDir;
           g.patPause = rr(0.6, 2.2);
-          g.patBest = undefined; g.patStuck = 0;
+          navReset(g);
         }
       }
       if (g.hp < g.maxHp) g.hp = Math.min(g.maxHp, g.hp + SOLDIER.regen * dt);
@@ -8326,27 +8432,30 @@ function render() {
     // oyunun sahte-3B çiziminde döndürülen dikdörtgen "yere serilmiş tahta" gibi
     // duruyor, kapı olduğu anlaşılmıyordu. Genişlik açının yatay bileşenine göre
     // hafifçe daralır (yandan bakış hissi), yükseklik hep aynı kalır.
-    const yatay = 0.55 + 0.45 * Math.abs(Math.sin(s.ang || 0));
+    const yatay = 0.62 + 0.38 * Math.abs(Math.sin(s.ang || 0));
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.scale(yatay, 1);
-    const KY = 46;                                                 // kapı yüksekliği
-    ctx.fillStyle = '#5d3f20';                                     // yan direkler (kapı kırılsa da durur)
-    ctx.fillRect(-40, -KY - 4, 13, KY + 10); ctx.fillRect(27, -KY - 4, 13, KY + 10);
-    ctx.fillStyle = '#6b4a26';                                     // direk başlıkları
-    ctx.beginPath(); ctx.moveTo(-40, -KY - 4); ctx.lineTo(-33.5, -KY - 12); ctx.lineTo(-27, -KY - 4); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(27, -KY - 4); ctx.lineTo(33.5, -KY - 12); ctx.lineTo(40, -KY - 4); ctx.fill();
-    ctx.fillStyle = '#4f351a'; ctx.fillRect(-42, -KY - 8, 84, 8);   // üst kiriş
+    // Kapı, kazık surun bir parçası gibi görünmeli: aynı açık ahşap tonu, aynı
+    // sivri kazık başlıkları, ince demir kuşak. (Önceki hâli koyu ve iri kalıp
+    // çitin yanında yamalı duruyordu.)
+    const KY = 38;                                                 // kapı yüksekliği
+    ctx.fillStyle = '#7a5327';                                     // yan direkler (kapı kırılsa da durur)
+    ctx.fillRect(-36, -KY - 2, 11, KY + 9); ctx.fillRect(25, -KY - 2, 11, KY + 9);
+    ctx.fillStyle = '#8d6231';                                     // sivri kazık başlıkları (çitle aynı dil)
+    ctx.beginPath(); ctx.moveTo(-36, -KY - 2); ctx.lineTo(-30.5, -KY - 13); ctx.lineTo(-25, -KY - 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(25, -KY - 2); ctx.lineTo(30.5, -KY - 13); ctx.lineTo(36, -KY - 2); ctx.fill();
+    ctx.fillStyle = '#6b4a26'; ctx.fillRect(-38, -KY - 6, 76, 7);   // üst kiriş
     if (s.alive) {
-      ctx.fillStyle = '#8a6234'; ctx.fillRect(-28, -KY, 56, KY);    // çift kanat
-      ctx.strokeStyle = 'rgba(46,29,10,0.55)'; ctx.lineWidth = 1.5;
-      for (let i = -21; i <= 21; i += 7) { ctx.beginPath(); ctx.moveTo(i, -KY + 2); ctx.lineTo(i, -2); ctx.stroke(); }
-      ctx.fillStyle = '#54606c';                                    // demir kuşaklar
-      ctx.fillRect(-28, -KY + 9, 56, 5); ctx.fillRect(-28, -16, 56, 5);
-      ctx.strokeStyle = 'rgba(30,20,8,0.75)'; ctx.lineWidth = 2;
+      ctx.fillStyle = '#9a7040'; ctx.fillRect(-25, -KY, 50, KY);    // çift kanat (çitten bir tık açık)
+      ctx.strokeStyle = 'rgba(70,45,18,0.42)'; ctx.lineWidth = 1.2;
+      for (let i = -19; i <= 19; i += 6.5) { ctx.beginPath(); ctx.moveTo(i, -KY + 2); ctx.lineTo(i, -2); ctx.stroke(); }
+      ctx.fillStyle = '#6d5a48';                                    // ince demir kuşaklar
+      ctx.fillRect(-25, -KY + 8, 50, 3.5); ctx.fillRect(-25, -13, 50, 3.5);
+      ctx.strokeStyle = 'rgba(60,40,16,0.5)'; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.moveTo(0, -KY); ctx.lineTo(0, 0); ctx.stroke();   // kanat aralığı
       ctx.fillStyle = '#c9a24a';                                    // halkalar
-      ctx.beginPath(); ctx.arc(-7, -21, 3.2, 0, TAU); ctx.arc(7, -21, 3.2, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(-6, -18, 2.6, 0, TAU); ctx.arc(6, -18, 2.6, 0, TAU); ctx.fill();
     } else {
       // kırık: direkler ayakta, kanatlar parçalanıp yere düşmüş
       ctx.fillStyle = 'rgba(70,48,22,0.5)';
@@ -8359,10 +8468,10 @@ function render() {
     ctx.restore();
     if (!s.alive) { // kırık kapı: uyarı işareti
       ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('🚨', s.x, s.y - 62 + Math.sin(G.t * 3) * 2);
+      ctx.fillText('🚨', s.x, s.y - 56 + Math.sin(G.t * 3) * 2);
     } else if (s.hp < s.maxHp) {
-      ctx.fillStyle = 'rgba(20,15,8,0.7)'; ctx.fillRect(s.x - 22, s.y - 68, 44, 5);
-      ctx.fillStyle = '#d8763a'; ctx.fillRect(s.x - 22, s.y - 68, 44 * s.hp / s.maxHp, 5);
+      ctx.fillStyle = 'rgba(20,15,8,0.7)'; ctx.fillRect(s.x - 22, s.y - 60, 44, 5);
+      ctx.fillStyle = '#d8763a'; ctx.fillRect(s.x - 22, s.y - 60, 44 * s.hp / s.maxHp, 5);
     }
   } });
   for (const cv of G.caravans) if (vis(cv.x, cv.y)) list.push({ y: cv.y, f: () => {
@@ -8551,8 +8660,8 @@ function render() {
       L.fillStyle = g2; L.beginPath(); L.arc(lx, ly, r, 0, TAU); L.fill();
     };
     if (G.caveRun) {
-      for (const t of (G.caveTorches || [])) punch(t.x - cx, t.y - cy - 20, 195, 0.8); // duvar meşaleleri
-      for (const k of (G.caveCrystals || [])) punch(k.x - cx, k.y - cy - 10, 120, 0.5); // kristal ışığı
+      for (const t of (G.caveTorches || [])) punch(t.x - cx, t.y - cy - 20, 330, 0.85); // duvar meşaleleri
+      for (const k of (G.caveCrystals || [])) punch(k.x - cx, k.y - cy - 10, 200, 0.55); // kristal ışığı
       if (!G.dead) punch(G.player.x - cx, G.player.y - cy - 20, 230, 0.95); // meşale
       const cc = G.structures.find(s2 => s2.kind === 'cavechest' && s2.alive);
       if (cc) punch(cc.x - cx, cc.y - cy - 10, 110, 0.6);
