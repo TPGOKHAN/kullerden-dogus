@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Küllerden Doğuş</title>
+<link rel="stylesheet" href="style.css?v=3.4">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="playerCard">
+    <div id="playerName">Kael</div>
+    <div id="hpBar"><div id="hpFill"></div><span id="hpText"></span></div>
+    <div id="xpBar"><div id="xpFill"></div></div>
+    <div id="armyInfo"></div>
+    <div id="quest"><span id="questIcon">⚑</span><span id="questText"></span></div>
+  </div>
+  <div id="res"></div>
+  <div id="clock"></div>
+  <div id="dayReport" class="hidden"></div>
+  <div id="visitBar" class="hidden"><span id="visitName"></span><span id="visitTime"></span><button id="visitLeave">🏠 Dön</button></div>
+  <div id="prompt"></div>
+  <div id="toasts"></div>
+  <div id="banner"></div>
+</div>
+
+<!-- Build / action panel -->
+<div id="panel" class="hidden">
+  <div id="panelTitle"></div>
+  <div id="panelBody"></div>
+  <button id="panelClose">✕</button>
+</div>
+
+<!-- Touch controls -->
+<div id="joy" class="hidden"><div id="joyKnob"></div></div>
+<button id="btnAttack">⚔️</button>
+<button id="btnDodge">💨</button>
+<button id="btnInteract" class="hidden">🔨</button>
+
+<div id="deathOverlay" class="hidden">
+  <div>Yenildin!</div>
+  <div class="sub">Köy Konağı'nın ocağında yeniden doğuyorsun...</div>
+</div>
+
+<!-- Bölge haritası -->
+<div id="mapOverlay" class="hidden">
+  <div id="mapFrame">
+    <div id="mapTitle">🗺️ Bölge Haritası</div>
+    <canvas id="mapCanvas"></canvas>
+    <div id="mapTools">
+      <button id="mapWorld">🌍 Cihan Haritası</button>
+      <button id="mapEdit">🛠️ Düzenle</button>
+      <button id="mapSave" class="hidden">💾 Kaydet</button>
+      <button id="mapReset" class="hidden">↩️ Varsayılan</button>
+    </div>
+    <div id="mapHint">Bir lokasyona tıkla → yolculuk başlar &nbsp;·&nbsp; [M] aç/kapat</div>
+    <button id="mapClose">✕</button>
+  </div>
+</div>
+<button id="btnMap">🗺️</button>
+<button id="btnMute">🔊</button>
+<button id="btnBag">🎒</button>
+<button id="btnArmy">🎖️</button>
+<button id="btnFriends">🤝</button>
+<button id="btnWorld">🌍</button>
+<button id="btnSettings">⚙️</button>
+<button id="btnInfil" class="hidden">🥷</button>
+
+<!-- Cihan Haritası: dünya fethi kampanyası -->
+<div id="worldOverlay" class="hidden">
+  <div id="worldFrame">
+    <div id="worldTitle">🌍 Cihan Haritası</div>
+    <canvas id="worldCanvas"></canvas>
+    <div id="worldHint"></div>
+    <button id="worldClose">✕</button>
+  </div>
+</div>
+
+<!-- Zafer ekranı -->
+<div id="victory" class="hidden">
+  <div id="vicFrame">
+    <div id="vicTitle">⚔️ BÖLGE FETHEDİLDİ! ⚔️</div>
+    <div id="vicRegion"></div>
+    <div id="vicRows"></div>
+    <div id="vicDynasty"></div>
+    <div id="vicBtns">
+      <button id="vicMigrate">🌍 Cihan Haritası — Yeni Sefer</button>
+      <button id="vicStay">🗺️ Burada Kal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ana menü -->
+<div id="mainMenu" class="hidden">
+  <div id="menuEmbers"></div>
+  <div id="menuInner">
+    <div id="menuRays"></div>
+    <div id="menuFlame">🔥</div>
+    <div id="menuLogo">KÜLLERDEN<br>DOĞUŞ</div>
+    <div id="menuSub">⚔️ &nbsp;Bir Cihan Fethi Hikâyesi&nbsp; ⚔️</div>
+    <div id="menuBtns">
+      <button id="menuPlay" class="menuBtn primary">▶ Başla</button>
+      <button id="menuNew" class="menuBtn">🆕 Yeni Oyun</button>
+    </div>
+    <div id="menuSlots"></div>
+    <div id="menuFoot"><span id="menuMute">🔊</span> · v3.4 — Oto Yönetim · Katmanlı Kaleler · Diyar Komutanları</div>
+  </div>
+</div>
+
+<script src="game.js?v=3.4"></script>
+</body>
+</html>

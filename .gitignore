@@ -1,0 +1,10 @@
+# Admin paneli yayınlanmaz — yalnız geliştirme makinesinde durur
+admin.html
+admin.js
+
+# Eski CrazyGames kopyası ve tasarım notları yayına girmez
+crazygames-build/
+RiseFromAshes-crazygames.zip
+GDD.md
+
+.DS_Store

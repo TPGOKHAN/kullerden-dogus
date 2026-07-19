@@ -1,0 +1,79 @@
+╔══════════════════════════════════════════════════════════╗
+║              KÜLLERDEN DOĞUŞ  ·  v3.4                    ║
+║        Köyünü kur, ordunu topla, cihanı fethet            ║
+╚══════════════════════════════════════════════════════════╝
+
+NASIL OYNANIR (kurulum yok, 10 saniye)
+──────────────────────────────────────────────────────────
+1. Bu klasörü masaüstüne çıkar (zip içinden çıkarmayı unutma!).
+2. "index.html" dosyasına ÇİFT TIKLA.
+3. Tarayıcı açılır, "Başla" de. Hepsi bu.
+
+  ⚠️ Chrome ya da Edge kullan (Safari'de kayıt sorunu olabilir).
+  ⚠️ Klasördeki dosyaları ayırma/silme — hepsi bir arada durmalı.
+
+KONTROLLER
+──────────────────────────────────────────────────────────
+  W A S D  /  ok tuşları .... yürü
+  Boşluk ................... saldır (basılı tut = güçlü vuruş)
+  Shift veya X ............. atıl (kaçınma, hasarsız)
+  E ........................ etkileşim (bina, sandık, kapı...)
+  M ........................ harita
+  H ........................ ata bin / in (at satın aldıysan)
+
+  Sol taraftaki yuvarlak butonlar:
+  🗺️ harita · 🔊 ses · 🎒 çanta · 🎖️ ordu · 🤝 yoldaşlar
+  🌍 cihan haritası · ⚙️ ayarlar
+
+İLK 5 DAKİKA
+──────────────────────────────────────────────────────────
+  • Sol üstteki sarı görev yazısını takip et, seni elinden tutar.
+  • Ağaç/kayaya vurarak kaynak topla.
+  • İnşaat menüsü YOK: boş arsanın yanında DUR, kaynakların
+    kendiliğinden uçarak gider ve bina yükselir.
+    (Yürürken akmaz — durman gerekiyor.)
+  • Köy otomatik yönetim modu açık gelir: köyün kendi kendine
+    inşa eder, tamir eder, asker basar. Konak'tan kapatabilirsin.
+  • Geceleri baskın var — Gözcü Kulesi ve sur kur!
+
+╔══════════════════════════════════════════════════════════╗
+║   BİRLİKTE OYNAMAK  (asıl eğlence burada)                ║
+╚══════════════════════════════════════════════════════════╝
+
+Her birinizin kendi köyü olur, ama birbirinize bağlanabilirsiniz:
+
+  1) 🤝 YOLDAŞLAR butonuna bas → "Çevrimiçi Ol" de, adını yaz.
+  2) Sana 6 haneli bir DAVET KODU verir. Bu kodu paylaş.
+  3) Karşı taraf "Arkadaş Ekle" deyip senin kodunu girsin.
+     (Tek kişinin eklemesi yeterli, ikiniz de listede görürsünüz.)
+
+Bağlandıktan sonra:
+
+  🏠 KÖY ZİYARETİ
+     Yoldaşlar listesinden "Ziyaret" de → onun köyüne ışınlanırsın.
+     Orada topladığın kaynaklar, öldürdüğün düşmanlar ve
+     onardığın binalar ona hediye kalır. Üstteki sayaç dolunca
+     ya da "Dön" deyince kendi köyüne geri gelirsin.
+
+  🏝️ DOSTLUK ADASI  (en iyisi)
+     Biri "Ada Kur" der, çıkan kodu diğerine verir;
+     diğeri "Adaya Katıl" deyip kodu girer.
+     → Normal haritanın 5 katı büyüklükte, çok daha zorlu bir ada.
+     → ORTAK üs, ORTAK depo: senin kurduğun binayı o da görür.
+     → Temizlediğiniz kamplar ikinize birden sayılır.
+     → Haritada birbirinizi 🧙 işaretiyle görürsünüz.
+     → Adada kazandığın kaynak/eşya kendi köyüne döner.
+
+  Not: Aynı anda online olmanız şart değil — bıraktığın yardım
+  ve ada ilerlemesi karşı taraf girdiğinde onu bekliyor olur.
+
+SIK SORULANLAR
+──────────────────────────────────────────────────────────
+  "Kaydım nerede?" → Tarayıcının hafızasında, otomatik kaydeder.
+     Aynı tarayıcıyla açtığın sürece kaldığın yerden devam eder.
+  "Yanlışlıkla geçmişi temizledim" → Kayıt silinir, yeniden başlar.
+  "Oyun yeni sürüme geçti" → Sayfayı Ctrl+Shift+R (Mac: Cmd+Shift+R)
+     ile yenile.
+  "Ordum aç kaldı" → Askerler her sabah et yiyor; Avcı Kulübesi kur.
+
+İyi eğlenceler! ⚔️
