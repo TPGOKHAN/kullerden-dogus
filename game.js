@@ -1399,6 +1399,17 @@ function navMove(u, tx, ty, spd, dt, r, isEnemy) {
   return sonMesafe;
 }
 const navReset = u => { u.nvBest = undefined; u.nvStuck = 0; u.nvDead = 0; u.nvWf = 0; u.nvGx = undefined; u.nvLock = null; u.bntK = null; };
+// ENGEL TANIMADAN DÜZ SÜZÜLME — yalnız DEKORATİF/gezici öğeler için (göçebe
+// tüccar devesi, cihan haritasında dolaşan devriye çeteleri). Sur/ağaç/kapıya
+// takılıp "asılı kalma" görüntüsü olmasın diye collide çağrılmaz. Savaşan ya da
+// savunmayı ilgilendiren hiçbir birim BUNU kullanmaz (yoksa kale/kapı savunması
+// anlamsızlaşır) — onlar navMove/wallRoute ile duvarları dolaşmaya devam eder.
+function glide(u, tx, ty, spd, dt) {
+  const dx = tx - u.x, dy = ty - u.y, m = Math.hypot(dx, dy);
+  if (m < 0.5) return;
+  const adim = Math.min(m, spd * dt);
+  u.x += (dx / m) * adim; u.y += (dy / m) * adim; u.dir = Math.atan2(dy, dx);
+}
 // Zindan kafesi: esir komutanların tutulduğu yer (site merkezine göre sabit konum)
 const JAIL_OFFS = { camp1: [150, 70], fort: [180, 120], legion: [180, 120] };
 const jailPos = site => { const O = OUTPOSTS[site], o = JAIL_OFFS[site] || [150, 70]; return { x: O.x + o[0], y: O.y + o[1] }; };
@@ -3914,6 +3925,22 @@ function renderPanel() {
         .map(([k, v]) => Math.floor(v) + (RES_DEF.find(r => r[0] === k) || ['', ''])[1]).join(' ');
       pitem('🏳️ Üs Ambarı', (ambar || 'boş') + ' · limit ' + opStockCap(op) + '/kaynak — kaynak al ya da buraya taşı', null, 'Aç', true,
         () => { G.panelFor = { opStock: s.site }; renderPanel(); });
+      // Ziyafet: bu üssün OCAĞINDA, üssün KENDİ ambarındaki etle — köy Konağı'ndaki gibi (v4.2: herkes kendi yerinde yer)
+      const opEt = Math.floor(op.stock.meat || 0);
+      pitem('🍖 Ziyafet ver', G.feastT > 0 ? 'Ziyafet sürüyor! (+%10 hız, ' + Math.ceil(G.feastT) + 'sn)'
+        : (opEt < 8 ? 'Üs ambarında yeterli et yok (🍖' + opEt + '/8) — avcı üretsin ya da buraya et taşı'
+          : 'Üs ocağında et çevrilir: sen + garnizon + yanındaki ordu TAM CAN, 60sn +%10 hız'),
+        { meat: 8 }, 'Ziyafet', G.feastT <= 0 && opEt >= 8, () => {
+          op.stock.meat -= 8;
+          const p2 = G.player; p2.hp = p2.maxHp;
+          const gar = G.garrisonUnits.filter(g2 => g2.garrisonOf === s.site);
+          for (const u of [...G.soldiers, ...G.commanders, ...gar]) u.hp = u.maxHp;
+          G.feastT = 60;
+          spawnParts(s.x, s.y - 30, 16, { colors: ['#ffd257', '#ff9a2e', '#57d364'], v: 55, life: 1.0, g: -25 });
+          banner('🍖 ZİYAFET!');
+          toast(O.name + ' ocağında et çevrildi — garnizon + ordu doydu: tam can + 60sn hız!');
+          SFX.upgrade(); save();
+        });
       pitem('⚙️ Oto yönetim', op.auto !== false ? 'AÇIK — ambar kaynaklarıyla kendini onarır, kurar, asker basar' : 'KAPALI — her şey elle', null,
         op.auto !== false ? 'Kapat' : 'Aç', true, () => { op.auto = op.auto === false; SFX.build(); toast('⚙️ ' + O.name + ' oto yönetim: ' + (op.auto !== false ? 'AÇIK' : 'KAPALI')); save(); renderPanel(); });
       // karakol suru: köy suru gibi, baskıncılar önce kapıyı kırmak zorunda kalır
@@ -7305,9 +7332,16 @@ function update(dt) {
       if (e.wt <= 0) { e.wt = rr(1.5, 4); e.wx = e.hx + rr(-90, 90); e.wy = e.hy + rr(-90, 90); }
       const dd = dist(e.x, e.y, e.wx, e.wy);
       if (dd > 8) {
-        e.dir = Math.atan2(e.wy - e.y, e.wx - e.x);
-        const [nx2, ny2] = collide(e.x + Math.cos(e.dir) * d.speed * 0.45 * dt, e.y + Math.sin(e.dir) * d.speed * 0.45 * dt, 13 * d.scale, true);
-        e.x = nx2; e.y = ny2; e.walk += dt * 6;
+        // Cihan haritasında dolaşan devriye çeteleri (roam*): dolanırken sur/ağaç/
+        // kapı tanımadan süzülür — takılıp asılı kalmasınlar. SALDIRIYA geçince
+        // (aggro) yukarıdaki wallRoute dalına düşer, duvarlar yine geçerli.
+        if (e.camp && e.camp.indexOf('roam') === 0) {
+          glide(e, e.wx, e.wy, d.speed * 0.45, dt); e.walk += dt * 6;
+        } else {
+          e.dir = Math.atan2(e.wy - e.y, e.wx - e.x);
+          const [nx2, ny2] = collide(e.x + Math.cos(e.dir) * d.speed * 0.45 * dt, e.y + Math.sin(e.dir) * d.speed * 0.45 * dt, 13 * d.scale, true);
+          e.x = nx2; e.y = ny2; e.walk += dt * 6;
+        }
       }
     }
   }
@@ -7545,7 +7579,7 @@ function update(dt) {
         }
         continue;
       }
-      navMove(cv, tx4, ty4, 74, dt, 14, false);
+      glide(cv, tx4, ty4, 74, dt);   // göçebe tüccar devesi: sur/ağaç/kapı tanımadan süzülür
       cv.walk += dt * 8;
       continue;
     }
