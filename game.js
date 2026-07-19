@@ -2071,7 +2071,47 @@ function autoManage() {
     op._id = oid; op.stock = op.stock || {};
     sites.push({ id: oid, anchor: OUTPOSTS[oid], op, stock: op.stock, on: op.auto !== false });
   }
-  for (const s of sites) if (s.on) autoSite(s);
+  for (const s of sites) if (s.on && !autoSite(s)) autoCaravan(s, sites); // işi biten üs, ihtiyaç sahibine yardım yollar
+}
+// Boştaki üs: ambarı %75+ dolu bir kaynağı, o kaynağa muhtaç başka bir üsse kervanla gönderir
+function autoCaravan(s, sites) {
+  if (VISIT || ISLAND || G.caveRun || G.dead) return;
+  G.carCd = G.carCd || {};
+  if ((G.carCd[s.id] || 0) > G.t) return;                       // aynı üs sürekli kervan yollamasın
+  if (G.caravans.some(c => c.fromSite === s.id)) return;        // yoldaki kervanı bitirsin
+  const cap = s.id === 'village' ? stockCap() : opStockCap(s.op);
+  const fazla = [];
+  for (const [k] of RES_DEF) {
+    if (k === 'gold' || k === 'gems') continue;                 // değerliler kervanla taşınmaz
+    if (Math.floor(s.stock[k] || 0) >= cap * 0.75) fazla.push(k);
+  }
+  if (!fazla.length) return;
+  // en muhtaç üssü seç: ambarı %40'ın altında olan
+  let hedef = null, enAz = 1e9;
+  for (const t of sites) {
+    if (t.id === s.id || !t.on) continue;
+    const tcap = t.id === 'village' ? stockCap() : opStockCap(t.op);
+    for (const k of fazla) {
+      const tv = Math.floor(t.stock[k] || 0);
+      if (tv < tcap * 0.4 && tv < enAz) { enAz = tv; hedef = { t, k, tcap }; }
+    }
+  }
+  if (!hedef) return;
+  const k = hedef.k;
+  const yuk = Math.min(80, Math.floor((s.stock[k] || 0) - cap * 0.5), hedef.tcap - Math.floor(hedef.t.stock[k] || 0));
+  if (yuk < 10) return;                                          // küçük yük için kervan kaldırmaya değmez
+  s.stock[k] -= yuk;
+  G.carCd[s.id] = G.t + 45;
+  const A = s.anchor, B = hedef.t.anchor;
+  const icon = (RES_DEF.find(r => r[0] === k) || ['', ''])[1];
+  G.caravans.push({
+    caravan: true, supply: true, fromSite: s.id, toSite: hedef.t.id, res: k, amount: yuk, icon,
+    x: A.x, y: A.y + 40, hp: 280, maxHp: 280, dir: 0, walk: 0, flash: 0,
+    from: siteName(s.id).replace(' Karakolu', ''), toName: siteName(hedef.t.id).replace(' Karakolu', ''),
+    pts: [[B.x, B.y + 30]], i: 0,
+  });
+  toast('🐴 Yardım kervanı: ' + siteName(s.id).replace(' Karakolu', '') + ' → ' + siteName(hedef.t.id).replace(' Karakolu', '') + ' (' + yuk + icon + ')');
+  save();
 }
 function autoSite(s) {
   const R = s.id === 'village' ? palR() + 300 : 340;
@@ -2085,7 +2125,7 @@ function autoSite(s) {
       delete b.repPaid; b.ruined = false; b.hp = b.maxHp;
       SFX.build(); autoSay(s.id, BUILDINGS[b.type].name + ' onarıldı 🔧'); save();
     }
-    if (r1) return;
+    if (r1) return true;
   }
   // 2) KAPILAR: kırık olan hemen onarılır, hasarlısı (%70 altı) beklemeden tamir edilir
   if (s.id === 'village' && G.palisade.built) {
@@ -2098,7 +2138,7 @@ function autoSite(s) {
         G.autoGatePaid = {}; gt.hp = gt.maxHp; gt.alive = true;
         SFX.build(); autoSay('village', kirikti ? 'köy kapısı onarıldı 🚪' : 'köy kapısı tamir edildi 🔧'); save();
       }
-      if (r2) return;
+      if (r2) return true;
     }
   }
   if (s.op && s.op.wall) { // karakol sur kapısı: kırık ya da yıpranmış
@@ -2111,7 +2151,7 @@ function autoSite(s) {
         delete s.op.gatePaid; owg.alive = true; owg.hp = owg.maxHp; s.op.wallGateHp = owg.maxHp;
         SFX.build(); autoSay(s.id, kirikti2 ? 'sur kapısı onarıldı 🚪' : 'sur kapısı tamir edildi 🔧'); save();
       }
-      if (r3) return;
+      if (r3) return true;
     }
   }
   if (s.op && (s.id === 'fort' || s.id === 'legion')) { // fethedilen kalenin kendi kapısı
@@ -2125,7 +2165,7 @@ function autoSite(s) {
         delete s.op.kgPaid; og.alive = true; og.hp = og.maxHp;
         SFX.build(); autoSay(s.id, kirikti3 ? 'kale kapısı onarıldı 🚪' : 'kale kapısı tamir edildi 🔧'); save();
       }
-      if (r5) return;
+      if (r5) return true;
     }
   }
   // 2b) SUR KARARI: baskınlar başladıysa (gün 2+ ya da bir baskın atlatıldıysa) savunma öncelikli
@@ -2139,7 +2179,7 @@ function autoSite(s) {
       rebuildPalisade();
       SFX.build(); banner('🪵 KÖY SURU DİKİLDİ!'); autoSay('village', 'köy suru dikildi 🪵 — geceler artık daha güvenli'); save();
     }
-    if (r6) return;
+    if (r6) return true;
   }
   // 2c) TAŞ SUR: baskınlar sertleştiyse ahşap çit yetmez — bu noktada inşaattan önceliklidir
   if (s.id === 'village' && G.palisade.built && G.palisade.lv < 2 && !VISIT && !ISLAND
@@ -2153,7 +2193,7 @@ function autoSite(s) {
       rebuildPalisade();
       SFX.upgrade(); banner('🏰 TAŞ SUR YÜKSELDİ!'); autoSay('village', 'sur taşa çevrildi 🏰 (kapı 500 → 1200)'); save();
     }
-    if (r9) return;
+    if (r9) return true;
   }
   // karakola çit: ancak arsalar dolduktan SONRA (önce ev + gözcü kulesi, sur en pahalı iş)
   if (s.op && !s.op.wall && OP_WALL_SITES.includes(s.id) && !VISIT && !ISLAND
@@ -2166,7 +2206,7 @@ function autoSite(s) {
       rebuildOutpostWalls();
       SFX.build(); autoSay(s.id, 'karakol suru dikildi 🪵'); save();
     }
-    if (r7) return;
+    if (r7) return true;
   }
   // 3) şantiye: planlı boş arsa inşaatı
   for (const pl of G.plots) {
@@ -2177,7 +2217,7 @@ function autoSite(s) {
     pl.paid = pl.paid || {};
     const r4 = autoPayFly(s, bcost(B.cost), pl.paid, pl.x, pl.y);
     if (r4 === 2) { constructAt(pl); autoSay(s.id, B.name + ' inşa edildi 🏗️'); }
-    if (r4) return;
+    if (r4) return true;
   }
   // 4) köylü davet + iş ver (boş ev, cepten altın — depo akışından bağımsız)
   for (const b of G.buildings) {
@@ -2186,7 +2226,7 @@ function autoSite(s) {
     if (!canAfford(VILLAGER_COST)) break;
     pay(VILLAGER_COST); b.villager = true; b.job = 'wood';
     autoSay(s.id, 'yeni köylü davet edildi 👤 (oduncu)'); save();
-    return;
+    return true;
   }
   // 5) garnizon askeri eğit (cepten altın+demir)
   const op2 = s.id === 'village' ? G.outposts.village : s.op;
@@ -2198,7 +2238,7 @@ function autoSite(s) {
       (op2.garrisonCls = op2.garrisonCls || []).push({ cls: 'sword', lv: 1, xp: 0 });
       addGarrisonUnit(s.id, 'sword');
       autoSay(s.id, 'garnizona asker katıldı 🗡️ (' + op2.garrison + '/' + garrisonCap(op2) + ')'); save();
-      return;
+      return true;
     }
   }
   // 6) bina yükseltme (oyuncu başındaysa karışma)
@@ -2210,7 +2250,7 @@ function autoSite(s) {
     b.upPaid = b.upPaid || {};
     const r5 = autoPayFly(s, bcost(c), b.upPaid, b.x, b.y);
     if (r5 === 2) { applyUpgrade(b); autoSay(s.id, BUILDINGS[b.type].name + ' yükseltildi ⬆️'); }
-    if (r5) return;
+    if (r5) return true;
   }
   // 7) köy genişletme (ambar + cep altını yeterse)
   if (s.id === 'village' && !VISIT && !ISLAND && G.villageTier < 1 + EXPANSIONS.length) {
@@ -2222,6 +2262,7 @@ function autoSite(s) {
       SFX.build(); banner('KÖY GENİŞLEDİ! (oto)'); autoSay('village', 'köy genişletildi 🏗️'); save();
     }
   }
+  return false; // bu üste yapacak iş kalmadı
 }
 // Terfi: XP dolu + altın ödendi → rütbe atlar (manuel — Ordu panelinden)
 function promoteSoldier(u) {
@@ -3529,7 +3570,8 @@ function drawMap() {
   }
   for (const cv of G.caravans) {
     const [cx3, cy3] = W2S(cv.x, cv.y);
-    m.font = '11px sans-serif'; m.fillText('🐴', cx3, cy3 + 4);
+    m.font = '11px sans-serif'; m.textAlign = 'center'; m.fillText('🐴', cx3, cy3 + 4);
+    if (cv.supply) { m.font = 'bold 8.5px sans-serif'; m.fillStyle = '#3f5220'; m.fillText(cv.amount + cv.icon, cx3, cy3 - 8); }
   }
   // görevdeki komutanlar: haritada isimli işaret
   m.textAlign = 'center';
@@ -5856,7 +5898,27 @@ function update(dt) {
     if (cv.hp <= 0) {
       cv.dead = true;
       spawnDust(cv.x, cv.y, 12);
-      toast('🐴 ' + cv.from + ' kervanı yağmalandı! −' + cv.gold + '🪙', true);
+      toast(cv.supply
+        ? '🐴 ' + cv.from + ' → ' + cv.toName + ' yardım kervanı yağmalandı! −' + cv.amount + cv.icon
+        : '🐴 ' + cv.from + ' kervanı yağmalandı! −' + cv.gold + '🪙', true);
+      continue;
+    }
+    if (cv.supply) { // yardım kervanı: hedef üssün ambarına boşaltır
+      const [sx3, sy3] = cv.pts[0];
+      if (dist(cv.x, cv.y, sx3, sy3) < 46) {
+        cv.dead = true;
+        addStock(cv.res, cv.amount, sx3, sy3 - 30, cv.toSite === 'village' ? null : cv.toSite);
+        G.stats.caravans++;
+        SFX.coin();
+        toast('🐴 Yardım kervanı ulaştı — ' + cv.toName + ' ambarına +' + cv.amount + cv.icon);
+        save();
+        continue;
+      }
+      cv.dir = Math.atan2(sy3 - cv.y, sx3 - cv.x);
+      const rt3 = wallRoute(cv.x, cv.y, sx3, sy3, false); // sur varsa kapıdan dolaş
+      if (rt3 && rt3.wx !== undefined) cv.dir = Math.atan2(rt3.wy - cv.y, rt3.wx - cv.x);
+      const [nx3, ny3] = collide(cv.x + Math.cos(cv.dir) * 74 * dt, cv.y + Math.sin(cv.dir) * 74 * dt, 14);
+      cv.x = nx3; cv.y = ny3; cv.walk += dt * 8;
       continue;
     }
     const inside = G.palisade.built && dist(cv.x, cv.y, CAMPFIRE.x, CAMPFIRE.y) < palR();
@@ -7173,10 +7235,17 @@ function render() {
     if (Math.cos(cv.dir) < 0) ctx.scale(-1, 1);
     ctx.fillStyle = '#4f3319';
     ctx.beginPath(); ctx.arc(-10, -3, 5, 0, TAU); ctx.arc(6, -3, 5, 0, TAU); ctx.fill(); // tekerler
-    ctx.fillStyle = '#8a5c33'; ctx.fillRect(-16, -16, 24, 11); // kasa
-    ctx.fillStyle = '#ffd257'; ctx.fillRect(-13, -14, 6, 4); ctx.fillRect(-4, -14, 6, 4); // altın çuvalları
+    ctx.fillStyle = cv.supply ? '#6b7a3f' : '#8a5c33'; ctx.fillRect(-16, -16, 24, 11); // kasa
+    if (cv.supply) { ctx.fillStyle = '#9fb060'; ctx.fillRect(-14, -19, 20, 4); } // yüklü çuval sırtı
+    else { ctx.fillStyle = '#ffd257'; ctx.fillRect(-13, -14, 6, 4); ctx.fillRect(-4, -14, 6, 4); } // altın çuvalları
     ctx.font = '15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🐴', 17, -4);
     ctx.restore();
+    if (cv.supply) { // ne taşıdığı ve nereye gittiği başında yazsın
+      ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(cv.icon, cv.x, cv.y - 32);
+      ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = '#c8e0a8';
+      ctx.fillText('→ ' + cv.toName, cv.x, cv.y - 44);
+    }
     if (cv.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${cv.flash * 4})`; ctx.beginPath(); ctx.ellipse(cv.x, cv.y - 8, 20, 12, 0, 0, TAU); ctx.fill(); }
     if (cv.hp < cv.maxHp) {
       ctx.fillStyle = 'rgba(20,15,25,0.8)'; ctx.fillRect(cv.x - 18, cv.y - 28, 36, 5);
