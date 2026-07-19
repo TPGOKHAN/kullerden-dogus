@@ -308,6 +308,14 @@ const PAL_GATE = { x: 0, y: 0 }; // genWorld'de doldurulur
 // SADECE kendi taş suru olmayan karakollarda (kale/lejyonun zaten gerçek surları + onarılır kapıları var).
 const OP_WALL = { r: 265, gapA: 0.17, cost: { wood: 120, stone: 60, gold: 40 }, gateHp: 450, repair: { wood: 40, stone: 20 } };
 const OP_WALL_SITES = ['camp1'];
+// Karakol seviye atladıkça suru köy gibi GENİŞLER — yeni arsa halkası açılsın diye.
+// Sv.1: 265, Sv.2: 345, Sv.3: 425 (köyün 285 → 445 büyümesiyle aynı mantık).
+const OP_RING_STEP = 80;
+const opWallR = op => OP_WALL.r + (((op && op.lv) || 1) - 1) * OP_RING_STEP;
+const opWallRAt = site => opWallR(G.outposts && G.outposts[site]);
+// Sur büyürken kapı AÇIKLIĞI piksel olarak sabit kalsın (açısal yarıçap küçülür),
+// yoksa Sv.3'te 145px'lik bir delik oluyor ama kapı çizimi 80px kalıyordu.
+const opGapA = op => OP_WALL.gapA * OP_WALL.r / opWallR(op);
 const angDiff = (a, b) => { let d = Math.abs(a - b) % TAU; return d > Math.PI ? TAU - d : d; };
 // Lejyon karargâhı (tier 3, kuzeydoğu)
 const LEG = { x0: 3550, y0: 250, x1: 4150, y1: 610, gx0: 3790, gx1: 3910, cx: 3850, cy: 430 };
@@ -641,7 +649,7 @@ const cmdIndependent = c => !!(c.order && c.order !== 'follow');
 const cmdTroopCap = c => Math.min(8, 1 + Math.floor(c.lv / 2)); // öz ordu kapasitesi seviyeyle
 const CMD_TROOP_COST = 30; // komutanın kendi kesesinden asker bedeli (BAL.cmdTroopCost ile ezilir)
 const guardRadius = site => site === 'village' ? palR() + 110
-  : site === 'camp1' ? OP_WALL.r + 100 : site === 'fort' ? 480 : 520; // surun DIŞINDA devriye halkası
+  : site === 'camp1' ? opWallRAt('camp1') + 100 : site === 'fort' ? 480 : 520; // surun DIŞINDA devriye halkası
 const siteName = id => id === 'village' ? 'Köy' : (LOCATIONS.find(l => l.id === id) || OUTPOSTS[id] || { name: id }).name;
 // Taş Sur (köy surunun 2. seviyesi)
 const PAL2 = { cost: { stone: 120, wood: 60, iron: 10 }, gateHp: 1200 };
@@ -817,8 +825,9 @@ function genWorld() {
     dist(x, y, CAMPFIRE.x, CAMPFIRE.y) < VILLAGE_CLEAR ||
     dist(x, y, CAMP1.x, CAMP1.y) < OUTPOST_CLEAR ||
     dist(x, y, MERCHANT.x, MERCHANT.y) < 180 ||
-    (x > FORT.x0 - 140 && x < FORT.x1 + 140 && y > FORT.y0 - 140 && y < FORT.y1 + 140) ||
-    (x > LEG.x0 - 140 && x < LEG.x1 + 140 && y > LEG.y0 - 140 && y < LEG.y1 + 140) ||
+    // kaleler fethedilince DIŞ KALE ile 2x110px büyüyor: pay ona göre (yoksa kaynak sur içinde kalıyor)
+    (x > FORT.x0 - 360 && x < FORT.x1 + 360 && y > FORT.y0 - 360 && y < FORT.y1 + 360) ||
+    (x > LEG.x0 - 360 && x < LEG.x1 + 360 && y > LEG.y0 - 360 && y < LEG.y1 + 360) ||
     SIEGE_SITES.some(st => dist(x, y, st.x, st.y) < 200);
   function scatterAt(kind, n, cx2, cy2, radius) {
     let tries = 0;
@@ -861,8 +870,8 @@ function genWorld() {
     scatterRing('scrap', 3, cx3, cy3, r0, r0 + 150);
   };
   tedarik(CAMP1.x, CAMP1.y, OUTPOST_CLEAR + 30);
-  tedarik(FORT.cx, FORT.cy, Math.max(FORT.x1 - FORT.cx, FORT.y1 - FORT.cy) + 190);
-  tedarik(LEG.cx, LEG.cy, Math.max(LEG.x1 - LEG.cx, LEG.y1 - LEG.cy) + 190);
+  tedarik(FORT.cx, FORT.cy, Math.max(FORT.x1 - FORT.cx, FORT.y1 - FORT.cy) + 400);
+  tedarik(LEG.cx, LEG.cy, Math.max(LEG.x1 - LEG.cx, LEG.y1 - LEG.cy) + 400);
 
   // Bölge bekçileri: orman kaçakçıları, ocak haydutları, harabe eşkıyaları
   spawnEnemy('barb', FOREST.x - 180, FOREST.y + 90, 'forest'); spawnEnemy('barb', FOREST.x + 160, FOREST.y - 60, 'forest');
@@ -941,7 +950,9 @@ function genWorld() {
 }
 // Yerleşke temiz alanları: kaynaklar bu yarıçapın dışına düşer (yerleşke büyüse de içeride kalmasınlar)
 const VILLAGE_CLEAR = PAL.r + EXPANSIONS.length * 80 + 100;  // kademe 3 suru (445) + pay
-const OUTPOST_CLEAR = OP_WALL.r + 200;                        // kazık suru + karakol arsaları
+// Karakol da köy gibi büyüyor: temiz alan EN BÜYÜK haline (Sv.3 suru = 425) göre
+// hesaplanır, yoksa sur genişleyince ağaç/taş sur içinde kalıp birimleri takıyor.
+const OUTPOST_CLEAR = OP_WALL.r + 2 * OP_RING_STEP + 145;     // 570
 // Yerleşkenin içinde kalmış kaynakları kaldır (sur genişleyince birimler bunlara takılıyordu).
 // Diziden ÇIKARMIYORUZ: co-op senkronu düğümleri indeksle eşliyor, sıra bozulmamalı.
 function clearNodesInside(cx, cy, r) {
@@ -977,7 +988,7 @@ function wallRings() {
   for (const [site, op] of Object.entries(G.outposts)) {
     if (!op || !op.wall || op.isVillage || !OP_WALL_SITES.includes(site)) continue;
     const og = G.structures.find(s2 => s2.kind === 'owgate' && s2.site === site);
-    rings.push({ cx: OUTPOSTS[site].x, cy: OUTPOSTS[site].y, r: OP_WALL.r, gap: opWallGapDir(site), gapA: OP_WALL.gapA, oGate: og && og.alive ? og : null });
+    rings.push({ cx: OUTPOSTS[site].x, cy: OUTPOSTS[site].y, r: opWallR(op), gap: opWallGapDir(site), gapA: opGapA(op), oGate: og && og.alive ? og : null });
   }
   return rings;
 }
@@ -1073,7 +1084,7 @@ const jailPos = site => { const O = OUTPOSTS[site], o = JAIL_OFFS[site] || [150,
 const jailCmds = site => (G.prisoners[site] || []).filter(m => m.cmd);
 function rebuildOutpostWalls() {
   for (const [site2, op2] of Object.entries(G.outposts)) // karakol suru içindeki kaynaklar da kalkar
-    if (op2 && op2.wall && !op2.isVillage && OUTPOSTS[site2]) clearNodesInside(OUTPOSTS[site2].x, OUTPOSTS[site2].y, OP_WALL.r + 26);
+    if (op2 && op2.wall && !op2.isVillage && OUTPOSTS[site2]) clearNodesInside(OUTPOSTS[site2].x, OUTPOSTS[site2].y, opWallR(op2) + 26);
   G.opStakes.length = 0;
   G.structures = G.structures.filter(s => s.kind !== 'owgate');
   for (const [site, op] of Object.entries(G.outposts)) {
@@ -1085,15 +1096,16 @@ function rebuildOutpostWalls() {
       continue;
     }
     const O = OUTPOSTS[site], gapDir = opWallGapDir(site);
-    const step = 40 / OP_WALL.r;
+    const R = opWallR(op);
+    const step = 40 / R;
     for (let a = 0; a < TAU; a += step) {
-      if (angDiff(a, gapDir) < OP_WALL.gapA + 0.04) continue;
-      G.opStakes.push({ x: O.x + Math.cos(a) * OP_WALL.r + rr(-2, 2), y: O.y + Math.sin(a) * OP_WALL.r + rr(-2, 2), h: rr(24, 30) });
+      if (angDiff(a, gapDir) < opGapA(op) + 0.04) continue;
+      G.opStakes.push({ x: O.x + Math.cos(a) * R + rr(-2, 2), y: O.y + Math.sin(a) * R + rr(-2, 2), h: rr(24, 30) });
     }
     const ghp = op.wallGateHp !== undefined ? op.wallGateHp : OP_WALL.gateHp;
     G.structures.push({
       kind: 'owgate', site, ang: gapDir, // kapı halkanın teğetine oturur
-      x: O.x + Math.cos(gapDir) * OP_WALL.r, y: O.y + Math.sin(gapDir) * OP_WALL.r,
+      x: O.x + Math.cos(gapDir) * R, y: O.y + Math.sin(gapDir) * R,
       hp: Math.max(0, ghp), maxHp: OP_WALL.gateHp, alive: ghp > 0,
     });
   }
@@ -1945,9 +1957,7 @@ function load() {
       : { owned: true, looted: false, garrison: 0, lv: 1, garrisonCls: [], stock: {}, auto: true };
     const O = OUTPOSTS[id], bHp = outpostBannerHp(G.outposts[id].lv);
     G.structures.push({ kind: 'banner', site: id, x: O.x, y: O.y, hp: bHp, maxHp: bHp, alive: !G.outposts[id].looted });
-    OUTPOST_PLOT_OFFS.forEach(([ox, oy], i) => G.plots.push({ x: O.x + ox, y: O.y + oy, built: null, outpost: id, plan: ['house', 'watchtower', 'house'][i] }));
-    for (let lv2 = 2; lv2 <= G.outposts[id].lv; lv2++)
-      (OUTPOST_PLOT_MORE[lv2] || []).forEach(([ox, oy], i) => G.plots.push({ x: O.x + ox, y: O.y + oy, built: null, outpost: id, plan: ['watchtower', 'house'][i] || 'house' }));
+    opAddPlots(id, OUTPOST_PLOT_N[Math.min(3, G.outposts[id].lv)] || OUTPOST_PLOT_N[1]);
     for (let i = 0; i < G.outposts[id].garrison; i++) addGarrisonUnit(id, G.outposts[id].garrisonCls[i]);
   }
   // fetih temizliği ÖNCE (kapılar/sandıklar kırık say) — onarılmış kapı restore'u sonra gelir ki ezilmesin
@@ -2352,6 +2362,23 @@ function dedupeUnique() {
     toast('🏚️ Fazladan ' + ad + ' vardı — ambara çevrildi (' + siteName(fazla.outpost || 'village').replace(' Karakolu', '') + ')');
   }
   if (degisti) save();
+}
+// Yemek her yerleşkede yerel üretildiğinden (v4.2) et kaynağı olmayan üs açlıktan
+// kilitleniyor. Eski kayıtlarda avcı kulübesi planı hiç yoktu: ilk boş arsayı avcıya
+// çevir; boş arsa yoksa yenisini aç.
+function ensureHunters() {
+  for (const [sid, op] of Object.entries(G.outposts)) {
+    if (!op || !op.owned || op.looted || op.isVillage || !OUTPOSTS[sid]) continue;
+    const varMi2 = G.buildings.some(b => b.type === 'hunter' && !b.ruined && b.outpost === sid)
+      || G.plots.some(p => p.outpost === sid && !p.built && p.plan === 'hunter');
+    if (varMi2) continue;
+    const bos = G.plots.find(p => p.outpost === sid && !p.built);
+    if (bos) bos.plan = 'hunter';
+    else if (opAddPlots(sid, G.plots.filter(p => p.outpost === sid).length + 1)) {
+      const yeni = G.plots.filter(p => p.outpost === sid).pop();
+      if (yeni) yeni.plan = 'hunter';
+    }
+  }
 }
 function eksikMeslek(siteId) {
   const sahip = siteId === 'village' ? null : siteId;
@@ -3346,10 +3373,12 @@ function renderPanel() {
           () => {
             pay(uc); op.lv = opLv + 1;
             s.maxHp = outpostBannerHp(op.lv); s.hp = s.maxHp;
-            const more = OUTPOST_PLOT_MORE[op.lv] || [];
-            more.forEach(([ox, oy], i) => G.plots.push({ x: O.x + ox, y: O.y + oy, built: null, outpost: s.site, plan: ['watchtower', 'house'][i] || 'house' }));
+            // Alan genişler: kazık surlu üste +80 yarıçap, taş kalede yeni DIŞ KALE
+            if (op.wall) rebuildOutpostWalls();
+            if (KEEP_SITES.includes(s.site)) rebuildKeepWalls();
+            const more = opAddPlots(s.site, OUTPOST_PLOT_N[Math.min(3, op.lv)]);
             spawnParts(s.x, s.y - 40, 14, { colors: ['#ffd257', '#fff3c9'], v: 45, life: 1.1, g: -25 });
-            SFX.upgrade(); toast(O.name + ' güçlendi! Sv.' + op.lv + (more.length ? ' · +' + more.length + ' arsa' : '')); save(); renderPanel();
+            SFX.upgrade(); toast(O.name + ' güçlendi! Sv.' + op.lv + (more ? ' · +' + more + ' arsa, alan genişledi' : '')); save(); renderPanel();
           });
       }
       pitem('⚖️ Garnizon yönetimi', 'Askerlerini bırak / geri al (' + op.garrison + '/' + garrisonCap(op) + ')', null, 'Aç', true,
@@ -4674,12 +4703,13 @@ function collide(px, py, r, isEnemy) {
       if (!op || !op.wall || op.isVillage) continue;
       const O = OUTPOSTS[site];
       const dd = dist(x, y, O.x, O.y);
-      if (Math.abs(dd - OP_WALL.r) < r + 9 && dd > 1) {
+      const OR = opWallR(op);
+      if (Math.abs(dd - OR) < r + 9 && dd > 1) {
         const a = Math.atan2(y - O.y, x - O.x);
-        const inGap = angDiff(a, opWallGapDir(site)) < OP_WALL.gapA;
+        const inGap = angDiff(a, opWallGapDir(site)) < opGapA(op);
         const og = G.structures.find(s2 => s2.kind === 'owgate' && s2.site === site);
         if (!inGap || (isEnemy && og && og.alive)) {
-          const side = dd < OP_WALL.r ? OP_WALL.r - (r + 9) : OP_WALL.r + (r + 9);
+          const side = dd < OR ? OR - (r + 9) : OR + (r + 9);
           x = O.x + Math.cos(a) * side; y = O.y + Math.sin(a) * side;
         }
       }
@@ -5217,9 +5247,108 @@ worldCv.addEventListener('pointerdown', e => {
 setInterval(() => { if (!elWorldOverlay.classList.contains('hidden')) drawWorld(); }, 120);
 
 // ---------- Karakollar (fethedilen yerler) ----------
-const OUTPOST_PLOT_OFFS = [[135, 66], [-94, 117], [-94, -117]];                        // sancak çevresi halkası (r150)
-const OUTPOST_PLOT_MORE = { 2: [[34, 146], [34, -146]], 3: [[-150, 0], [135, -66]] };  // karakol Sv.2/Sv.3'te açılan arsalar
+// ARSA PLANI: yemek artık her yerleşkede yerel üretildiği için AVCI KULÜBESİ
+// ilk sırada — köylü davet edilmeden de et üretir, üs kendi kendini besler.
+const OUTPOST_PLAN = ['hunter', 'house', 'watchtower', 'house', 'depot', 'hunter', 'sawmill', 'house', 'watchtower'];
+const OUTPOST_PLOT_N = [0, 4, 7, 10];   // Sv.1'de 4 arsa, Sv.2'de 7, Sv.3'te 10
 const OUTPOST_BUILDS = ['house', 'watchtower', 'hunter', 'sawmill', 'depot']; // karakolda kurulabilenler
+// Nokta bir dikdörtgene pad kadar yakın mı?
+function rectYakin(w, x, y, pad) {
+  const nx = clamp(x, w.x, w.x + w.w), ny = clamp(y, w.y, w.y + w.h);
+  return dist(x, y, nx, ny) < pad;
+}
+// Karakolun yerleşilebilir alanı. Kazık surlu üste daire; taş surlu kalede
+// dikdörtgen kutu (iç sur halkaları G.walls'ta olduğu için aşağıdaki duvar
+// testi arsaları kendiliğinden iç kale / orta kale / dış kale bantlarına dağıtır).
+// DÖRTGEN SURLU KALELER: alan genişlemesi DIŞ KALE eklemektir. Kalenin kendi taş
+// kutusu (iç kale) ve varsa iç sur halkaları (orta kale) dar; seviye atladıkça
+// mevcut surun 110px dışına yeni bir dış sur çekilir ve o bant arsalara açılır.
+const KEEP_PAD = 150;   // bant genişliği: iki duvara da 52px pay kalsın diye 110 dardı
+const KEEP_SITES = ['fort', 'legion'];
+function keepBox(site, lv) {
+  const pad = Math.max(0, ((lv || 1) - 1)) * KEEP_PAD;
+  const B = site === 'fort' ? FORT : LEG;
+  return { x0: B.x0 - pad, y0: B.y0 - pad, x1: B.x1 + pad, y1: B.y1 + pad };
+}
+// Sahip olunan kalelerin dış sur halkalarını (seviyeye göre) yeniden kurar
+function rebuildKeepWalls() {
+  G.walls = G.walls.filter(w => !w.keep);
+  for (const sid of KEEP_SITES) {
+    const op = G.outposts[sid];
+    if (!op || !op.owned || op.looted || !OUTPOSTS[sid]) continue;
+    for (let lv = 2; lv <= (op.lv || 1); lv++) {
+      const B = keepBox(sid, lv), T = 24;
+      if (sid === 'fort') {   // kale kapısı BATIDA: yeni surda da aynı hizada boşluk bırak
+        G.walls.push(
+          { keep: true, x: B.x0 - T / 2, y: B.y0 - T / 2, w: B.x1 - B.x0 + T, h: T },
+          { keep: true, x: B.x0 - T / 2, y: B.y1 - T / 2, w: B.x1 - B.x0 + T, h: T },
+          { keep: true, x: B.x1 - T / 2, y: B.y0 - T / 2, w: T, h: B.y1 - B.y0 + T },
+          { keep: true, x: B.x0 - T / 2, y: B.y0 - T / 2, w: T, h: FORT.gateY0 - B.y0 + T / 2 },
+          { keep: true, x: B.x0 - T / 2, y: FORT.gateY1, w: T, h: B.y1 - FORT.gateY1 + T / 2 },
+        );
+      } else {                // lejyon kapısı GÜNEYDE
+        G.walls.push(
+          { keep: true, x: B.x0 - T / 2, y: B.y0 - T / 2, w: B.x1 - B.x0 + T, h: T },
+          { keep: true, x: B.x0 - T / 2, y: B.y0 - T / 2, w: T, h: B.y1 - B.y0 + T },
+          { keep: true, x: B.x1 - T / 2, y: B.y0 - T / 2, w: T, h: B.y1 - B.y0 + T },
+          { keep: true, x: B.x0 - T / 2, y: B.y1 - T / 2, w: LEG.gx0 - B.x0 + T / 2, h: T },
+          { keep: true, x: LEG.gx1, y: B.y1 - T / 2, w: B.x1 + T / 2 - LEG.gx1, h: T },
+        );
+      }
+    }
+    // yeni surun içinde kalan ağaç/taş kaldırılır (birimler takılmasın)
+    const B2 = keepBox(sid, op.lv || 1);
+    clearNodesInside((B2.x0 + B2.x1) / 2, (B2.y0 + B2.y1) / 2,
+      Math.max(B2.x1 - B2.x0, B2.y1 - B2.y0) / 2 + 30);
+  }
+}
+function opInside(site, x, y) {
+  const O = OUTPOSTS[site];
+  if (KEEP_SITES.includes(site)) {
+    const B = keepBox(site, (G.outposts[site] && G.outposts[site].lv) || 1);
+    return x > B.x0 + 62 && x < B.x1 - 62 && y > B.y0 + 62 && y < B.y1 - 62;
+  }
+  return dist(x, y, O.x, O.y) < opWallRAt(site) - 78;   // sur dibine bina dikilmez
+}
+// Boş arsa yeri ara: sur/taş duvar/iç kale halkası ile ÇAKIŞMAYAN ilk nokta.
+// DİKKAT — testler YALNIZ değişmeyen geometriye bakar (kale kutusu, G.walls, sancak
+// mesafesi, önceki arsalar). Ağaç/bina/yapı "canlı mı" durumuna göre değiştiği için
+// buraya karıştırılamaz: aynı üs kayıt açılışında yeniden kurulurken FARKLI konumlar
+// çıkar ve binalar arsalarını kaybederdi. Kaynaklar sonradan temizlenir.
+function opFreeSpot(site, kondu) {
+  const O = OUTPOSTS[site];
+  // Arama Sv.3 dış kalesinin köşesine (merkezden ~600px) kadar uzanır; adım ince
+  // tutulur, yoksa iki sur arasındaki dar bantlara hiç aday düşmüyor.
+  for (let R = 132; R <= 780; R += 18) {
+    for (let k = 0; k < 40; k++) {
+      const a = k * (TAU / 40) + R * 0.021;              // deterministik: her halkada açı kayar
+      const x = O.x + Math.cos(a) * R, y = O.y + Math.sin(a) * R * 0.92;
+      if (!opInside(site, x, y)) continue;
+      if (dist(x, y, O.x, O.y) < 112) continue;                                   // sancağın dibi boş kalsın
+      if (G.walls.some(w => !w.cave && rectYakin(w, x, y, 52))) continue;          // taş duvarlar + iç sur halkaları
+      if (kondu.some(p => dist(x, y, p.x, p.y) < 118)) continue;                   // arsalar arası geçiş payı
+      return { x, y };
+    }
+  }
+  return null;
+}
+// Bu üsse, hedeflenen sayıya ulaşana dek yeni arsa ekle (plan sırası korunur).
+// Arsanın üstünde kalan ağaç/taş kaldırılır — yoksa birimler oraya takılıyor.
+function opAddPlots(site, hedef) {
+  if (KEEP_SITES.includes(site)) rebuildKeepWalls();   // dış kale surları arsalardan ÖNCE dursun
+  const mevcut = G.plots.filter(p => p.outpost === site);
+  const kondu = mevcut.map(p => ({ x: p.x, y: p.y }));
+  let eklendi = 0;
+  for (let i = mevcut.length; i < hedef; i++) {
+    const spot = opFreeSpot(site, kondu);
+    if (!spot) break;                                    // yer kalmadı: sessizce dur
+    kondu.push(spot);
+    G.plots.push({ x: spot.x, y: spot.y, built: null, outpost: site, plan: OUTPOST_PLAN[i % OUTPOST_PLAN.length] });
+    clearNodesInside(spot.x, spot.y, 66);
+    eklendi++;
+  }
+  return eklendi;
+}
 const OUTPOST_UPG = [null, { wood: 80, stone: 60, gold: 80 }, { wood: 160, stone: 120, gold: 160, iron: 10 }]; // Sv2, Sv3
 const outpostBannerHp = lv => 300 + 200 * (lv - 1);
 function createOutpost(id) {
@@ -5227,8 +5356,8 @@ function createOutpost(id) {
   const O = OUTPOSTS[id];
   G.outposts[id] = { owned: true, looted: false, garrison: 0, lv: 1, garrisonCls: [] };
   G.structures.push({ kind: 'banner', site: id, x: O.x, y: O.y, hp: 300, maxHp: 300, alive: true });
-  OUTPOST_PLOT_OFFS.forEach(([ox, oy], i) => G.plots.push({ x: O.x + ox, y: O.y + oy, built: null, outpost: id, plan: ['house', 'watchtower', 'house'][i] }));
-  toast('🏳️ Karakol kuruldu: ' + O.name + ' — günde +' + O.income + '🪙, inşa arsaları açıldı');
+  const n0 = opAddPlots(id, OUTPOST_PLOT_N[1]);
+  toast('🏳️ Karakol kuruldu: ' + O.name + ' — günde +' + O.income + '🪙, ' + n0 + ' inşa arsası açıldı (🏹 avcı kulübesi dahil)');
   // zindandaki esir komutanlar kurtulur, saflarına döner
   const caps = (G.prisoners && G.prisoners[id]) || [];
   while (caps.length) {
@@ -6358,8 +6487,9 @@ function update(dt) {
         if (opw && opw.wall && tx !== null) {
           const owg = G.structures.find(s2 => s2.kind === 'owgate' && s2.site === e.raidTarget && s2.alive);
           if (owg) {
-            const eInside = dist(e.x, e.y, OC.x, OC.y) < OP_WALL.r - 15;
-            const tInside = dist(tx, ty, OC.x, OC.y) < OP_WALL.r - 5;
+            const ORe = opWallRAt(e.raidTarget);
+            const eInside = dist(e.x, e.y, OC.x, OC.y) < ORe - 15;
+            const tInside = dist(tx, ty, OC.x, OC.y) < ORe - 5;
             if (!eInside && tInside) { tx = owg.x; ty = owg.y; tref = null; tBuilding = null; e.tStruct = owg; td = dist(e.x, e.y, owg.x, owg.y); }
           }
         }
@@ -6782,7 +6912,7 @@ function update(dt) {
     const isV = site === 'village';
     const cx = isV ? CAMPFIRE.x : OUTPOSTS[site].x, cy = isV ? CAMPFIRE.y : OUTPOSTS[site].y;
     const op = G.outposts[site];
-    const r = isV ? (G.palisade.built ? palR() - 85 : 170) : (op && op.wall ? OP_WALL.r - 70 : 150);
+    const r = isV ? (G.palisade.built ? palR() - 85 : 170) : (op && op.wall ? opWallR(op) - 70 : 150);
     const pts = [];
     for (let a = 0; a < TAU - 0.01; a += TAU / 8) pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
     return pts;
@@ -8825,6 +8955,7 @@ function startGame() {
   $('mainMenu').classList.add('hidden');
   audio();
   dedupeUnique();      // eski kayıtlarda oluşmuş çift demirci/kışla vb. temizlenir
+  ensureHunters();     // yemek yerelleşti: her üste bir avcı kulübesi arsası şart
   lastT = performance.now();
   introBanners();
 }
