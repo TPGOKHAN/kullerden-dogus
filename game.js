@@ -3785,10 +3785,21 @@ function renderPanel() {
     if (b.type === 'siege') {
       elPanelBody.innerHTML += '<div class="pdesc">Ustaların hazır. Kuşatma silahları düşman kapılarının önündeki <b>⚔️ kuşatma kamplarında</b> yerinde inşa edilir: kaynakları yanına al, kampa git, silahı seç ve inşaat bitene dek şantiyede kal. Silahlar kuruldukları kuşatmada kalır.</div>';
     }
-    // yıkım: arsa boşalır, maliyetin %30'u iade
-    const refund = Object.fromEntries(Object.entries(B.cost).map(([k, v]) => [k, Math.floor(v * 0.3)]).filter(([, v]) => v > 0));
-    pitem('🧨 Binayı yık', 'Arsa boşalır · iade: ' + (Object.keys(refund).length ? COST(refund) : 'yok'), null, 'Yık', true,
-      () => { if (confirm(B.name + ' yıkılsın mı? Maliyetin %30\'u iade edilir.')) demolishBuilding(b, refund); });
+    // "Binayı yık" kaldırıldı: arsalar planlı ve her tip zaten üsse bir kez
+    // kuruluyor, yıkmanın bir faydası kalmadı — yanlışlıkla basılan bir düğmeydi.
+    // Pasif üreticilerin paneli yıkım düğmesi gidince boş kalıyordu: ne yaptıkları
+    // ve nereye ürettikleri yazsın (üretim üssün KENDİ ambarına gider — v4.2).
+    if (!elPanelBody.innerHTML) {
+      const nere = b.outpost && OUTPOSTS[b.outpost] ? OUTPOSTS[b.outpost].name.replace(' Karakolu', '') + ' ambarına' : 'köy deposuna';
+      const bilgi = b.type === 'sawmill' ? '🪵 ' + (b.lv >= 2 ? 2 : 1) + ' odun / 8 sn → ' + nere
+        : b.type === 'hunter' ? '🍖 ' + (b.lv >= 2 ? 2 : 1) + ' et / 10 sn → ' + nere
+        : b.type === 'watchtower' ? '🏹 Menzile giren düşmana kendiliğinden ok atar'
+        : b.type === 'depot' ? '🏬 Depo limiti +' + (b.lv * 200) + ' (her kaynak)'
+        : B.desc;
+      elPanelBody.innerHTML = '<div class="pdesc">' + bilgi
+        + '<br><br>Kendiliğinden çalışır. Yükseltmek için kaynakları yanına getir — '
+        + 'teslimat bitince bina kendi kendine yükselir.</div>';
+    }
   }
   if (!elPanelBody.innerHTML) elPanelBody.innerHTML = '<div class="pdesc">Şimdilik yapılacak bir şey yok.</div>';
 }
@@ -3818,21 +3829,6 @@ function buildAt(plot, type) {
   SFX.build(); toast(B.name + ' inşa edildi! ' + B.icon);
   spawnDust(plot.x, plot.y, 12);
   spawnParts(plot.x, plot.y - 30, 12, { colors: ['#ffd257', '#fff3c9', '#f0b93d'], v: 45, life: 1.0, g: -25, r: 3 });
-  closePanel(); save();
-}
-function demolishBuilding(b, refund) {
-  const plot = G.plots.find(pl => pl.x === b.x && pl.y === b.y);
-  if (plot) plot.built = null;
-  G.buildings = G.buildings.filter(x => x !== b);
-  // aynı tipten kalan var mı? (Köylü Evi çoklu olabilir)
-  const remain = G.buildings.filter(x => x.type === b.type);
-  if (remain.length) G.built[b.type] = Math.max(...remain.map(x => x.lv));
-  else delete G.built[b.type];
-  if (b.type === 'house' && b.villager) toast('Köylü, evi yıkılınca köyden ayrıldı', true);
-  if (Object.keys(refund).length) gain(refund, b.x, b.y - 30);
-  SFX.boom(); G.shake = 6;
-  spawnDust(b.x, b.y - 10, 16);
-  toast(BUILDINGS[b.type].name + ' yıkıldı — arsa boş 🧨');
   closePanel(); save();
 }
 // Sıradaki yükseltmenin bedeli (yoksa null) — menüsüz teslimat sistemi bunu okur
