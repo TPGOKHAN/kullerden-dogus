@@ -360,21 +360,57 @@ const BUILTIN_MAPS = [
 const CAVE = { x: 2900, y: 1950 }; // Karanlık İn (mini zindan girişi)
 // Yerleşkeler birbirine girmesin: çok yakın olan nokta, komşusundan uzağa itilir.
 // Deterministik (aynı girdi → aynı çıktı), böylece co-op'ta iki bilgisayar aynı haritayı kurar.
+// Yerleşke ayak izleri EN BÜYÜK hâlleriyle: köy kademe 3 suru (445), karakol
+// Sv.3 suru (425), kale/lejyon ise taş kutu + Sv.3'te eklenen iki DIŞ KALE suru.
+// Eski MIN tablosu bunları bilmiyordu (kale 780 sayılıyordu ama gerçek ayak izi
+// 680x585) → barbar kampının kazık suru lejyonun taş surunun içinden geçiyordu.
+// TEMBEL hesap: PAL/OP_WALL/KEEP_PAD gibi sabitler dosyada BURADAN SONRA
+// tanımlı. Nesne olarak yazılırsa modül yüklenirken TDZ hatası verip oyunu
+// komple çökertiyor (yaşandı). spaceOutSites ancak boot'un sonunda çağrılıyor.
+const siteFoot = () => ({
+  campfire: { r: PAL.r + EXPANSIONS.length * 80 },                    // 445
+  camp1:    { r: OP_WALL.r + 2 * OP_RING_STEP },                      // 425
+  fort:     { hw: 380 + 2 * KEEP_PAD, hh: 285 + 2 * KEEP_PAD },       // 680 x 585
+  legion:   { hw: 430 + 2 * KEEP_PAD, hh: 255 + 2 * KEEP_PAD },       // 730 x 555
+  merchant: { r: 170 }, ruins: { r: 210 }, forest: { r: 280 }, quarry: { r: 260 }, cave: { r: 170 },
+});
+// Merkezden VERİLEN YÖNDEKİ ayak izi (kutularda kenara olan uzaklık).
+// Çevrel daire kullanmak kaleleri gereksiz yere 900px'lik toplara çevirip
+// haritayı dağıtıyordu; yön bazlı ölçü hem doğru hem cimri.
+function siteReach(k, ang) {
+  const f = siteFoot()[k] || { r: 260 };
+  if (f.r) return f.r;
+  const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang));
+  return Math.min(c > 1e-4 ? f.hw / c : 1e9, sn > 1e-4 ? f.hh / sn : 1e9);
+}
 function spaceOutSites(g) {
-  const MIN = { campfire: 900, camp1: 620, fort: 780, legion: 800, merchant: 380, ruins: 380, forest: 380, quarry: 380, cave: 340 };
+  const PAY = 90;   // yerleşkeler arası nefes payı
   const keys = ['campfire', 'fort', 'legion', 'camp1', 'ruins', 'merchant', 'forest', 'quarry', 'cave'].filter(k => g[k]);
-  for (let tur = 0; tur < 6; tur++) {
+  // Üst dünya sınırları: WORLD.w artık mağara şeridini de kapsıyor (9100),
+  // oraya itilen yerleşke haritanın dışında kalırdı.
+  const x0 = 320, x1 = OVERWORLD_W - 320, y0 = 300, y1 = WORLD.h - 300;
+  for (let tur = 0; tur < 16; tur++) {
     let itildi = false;
     for (let i = 0; i < keys.length; i++) {
       for (let j = i + 1; j < keys.length; j++) {
         const a = g[keys[i]], b = g[keys[j]];
-        const gerek = Math.max(MIN[keys[i]] || 380, MIN[keys[j]] || 380);
-        const d = Math.hypot(b.x - a.x, b.y - a.y);
-        if (d >= gerek || d < 1) continue;
-        // önceki (daha öncelikli) nokta yerinde kalır, sonraki itilir
         const ang = Math.atan2(b.y - a.y, b.x - a.x);
-        b.x = Math.round(clamp(a.x + Math.cos(ang) * gerek, 260, WORLD.w - 260));
-        b.y = Math.round(clamp(a.y + Math.sin(ang) * gerek, 260, WORLD.h - 260));
+        const gerek = siteReach(keys[i], ang) + siteReach(keys[j], ang + Math.PI) + PAY;
+        const d = Math.hypot(b.x - a.x, b.y - a.y);
+        if (d >= gerek) continue;
+        const a2 = d < 1 ? (i * 1.7 + j) : ang;   // üst üsteyse deterministik bir yöne aç
+        // Normalde SONRAKİ nokta itilir. Ama itilecek yer harita sınırının
+        // dışına düşüyorsa (kırpılıp yerinde sayardı) bunun yerine ÖNCEKİ nokta
+        // ters yöne itilir — yoksa kenara sıkışan çift hiç açılmıyordu.
+        const hx = a.x + Math.cos(a2) * gerek, hy = a.y + Math.sin(a2) * gerek;
+        const sigmaz = hx < x0 || hx > x1 || hy < y0 || hy > y1;
+        if (sigmaz && keys[i] !== 'campfire') {
+          a.x = Math.round(clamp(b.x - Math.cos(a2) * gerek, x0, x1));
+          a.y = Math.round(clamp(b.y - Math.sin(a2) * gerek, y0, y1));
+        } else {
+          b.x = Math.round(clamp(hx, x0, x1));
+          b.y = Math.round(clamp(hy, y0, y1));
+        }
         itildi = true;
       }
     }
@@ -633,10 +669,15 @@ const SOLDIER_CLS = {
 };
 const BARRACKS_CAP = [0, 3, 5];
 // ---------- Asker rütbe & seviye: XP leşle birikir, TERFİ MANUEL (Ordu panelinden altınla) ----------
-const SOLDIER_RANKS = ['Er', 'Onbaşı', 'Çavuş', 'Üstçavuş', 'Başçavuş', 'Muhafız', 'Kıdemli Muhafız', 'Yiğit', 'Alp', 'Başbuğ'];
-const SOLDIER_LV_MAX = 10, CMD_LV_MAX = 80;
-const sXpNeed = lv => 20 + lv * 15;          // sıradaki terfi için gereken XP
-const sPromoteCost = lv => 15 + lv * 10;     // terfi bedeli 🪙
+// Asker tavanı Sv.25 — rütbeler 25 kademeye yayıldı (ilk 10'u eskisiyle birebir
+// aynı, mevcut askerlerin unvanı değişmesin).
+const SOLDIER_RANKS = ['Er', 'Onbaşı', 'Çavuş', 'Üstçavuş', 'Başçavuş', 'Muhafız', 'Kıdemli Muhafız', 'Yiğit', 'Alp', 'Başbuğ',
+  'Akıncı', 'Kıdemli Akıncı', 'Serdengeçti', 'Bahadır', 'Kıdemli Bahadır', 'Tekin', 'Subaşı', 'Çeribaşı', 'Sancakdar', 'Tuğ Beyi',
+  'Alp Eren', 'Bey', 'Ulu Bey', 'Han Yiğidi', 'Kağan Muhafızı'];
+const SOLDIER_LV_MAX = 25, CMD_LV_MAX = 80;
+// Sv.10'a kadar eski eğri korunur, sonrası yavaşlar (yoksa tavan erişilemez)
+const sXpNeed = lv => lv <= 10 ? 20 + lv * 15 : 170 + (lv - 10) * 8;   // sıradaki terfi için gereken XP
+const sPromoteCost = lv => lv <= 10 ? 15 + lv * 10 : 115 + (lv - 10) * 6; // terfi bedeli 🪙
 const soldierRank = s => SOLDIER_RANKS[Math.min(SOLDIER_LV_MAX, s.lv || 1) - 1];
 function soldierRecalc(s) { // seviye başına +14❤ +2⚔ (sınıf tabanının üstüne)
   const SC = SOLDIER_CLS[s.cls || 'sword'];
@@ -2153,7 +2194,10 @@ function load() {
     if (!bp) return;
     let pl = bp.x !== undefined ? G.plots.find(p2 => p2.x === bp.x && p2.y === bp.y) : G.plots[i];
     if (!pl && bp.x !== undefined) { // arsa düzeni değiştiyse (halka yerleşimi) en yakın BOŞ arsaya otur
-      let bd2 = 260;
+      // Pay 260 → 520: v4.10'da yerleşke aralıkları büyüdüğü için kale/karakol
+      // merkezleri birkaç yüz piksel kayabiliyor; eski kayıttaki binalar arsasız
+      // kalmasın diye arama yarıçapı genişletildi.
+      let bd2 = 520;
       for (const p2 of G.plots) { if (p2.built) continue; const dd2 = dist(bp.x, bp.y, p2.x, p2.y); if (dd2 < bd2) { bd2 = dd2; pl = p2; } }
     }
     if (!pl || pl.built) return;
@@ -2390,7 +2434,7 @@ function autoManage() {
   for (const s of sites) {
     if (!s.on) continue;
     autoSmelt(s);                                   // demirci hurdayı boş durmadan eritir (inşaattan bağımsız)
-    if (!autoSite(s)) autoCaravan(s, sites);        // işi biten üs, ihtiyaç sahibine yardım yollar
+    if (!autoSite(s) && !autoAl(s)) autoCaravan(s, sites);   // iş bitti: eksik varsa satın al, yoksa yardım/satış
   }
 }
 // DEMİRCİ OCAĞI: üsste demirci varsa ambardaki hurda boş yatmaz — 5🔩 → 1⚙️ demir.
@@ -2412,6 +2456,41 @@ function autoSmelt(s) {
     G.flyItems.push({ x0: s.anchor.x + rr(-14, 14), y0: s.anchor.y - 42, x1: oca.x + rr(-10, 10), y1: oca.y - 14, t: 0, icon: '🔩' });
   (G.smelts = G.smelts || []).push({ site: s.id, n: parti, t: 1.4, x: oca.x, y: oca.y, ax: s.anchor.x, ay: s.anchor.y });
 }
+// TÜCCARDAN ALIM: kese doluyken bir işin kaynağı eksik kaldıysa kervan altın
+// götürüp malı getirir. Satış tek yönlüydü; "2970 altın var ama karakol 60 odun
+// eksik olduğu için Sv.1'de bekliyor" durumu buradan çıkmıştı.
+const AL_FIYAT = { wood: 2.6, stone: 3.6, iron: 9 };   // tüccarın satış fiyatı (birim başına 🪙)
+function autoAl(s) {
+  if (VISIT || ISLAND || G.caveRun || G.dead) return false;
+  G.carCd = G.carCd || {};
+  if ((G.carCd[s.id] || 0) > G.t) return false;
+  if (G.caravans.some(c => c.fromSite === s.id)) return false;
+  const cap = s.id === 'village' ? stockCap() : opStockCap(s.op);
+  const bekleyen = bekleyenIhtiyac(s);
+  let k = null, eksik = 0;
+  for (const [kk, v] of Object.entries(bekleyen)) {
+    if (!AL_FIYAT[kk]) continue;
+    const e = v - Math.floor(s.stock[kk] || 0);
+    if (e > eksik) { eksik = e; k = kk; }
+  }
+  if (!k || eksik < 10) return false;
+  const adet = Math.min(80, Math.max(20, eksik), Math.floor(cap * 0.6));
+  const bedel = Math.ceil(adet * AL_FIYAT[k]);
+  if (Math.floor(G.res.gold || 0) < bedel + 120) return false;   // kese tamamen boşalmasın
+  G.res.gold -= bedel;
+  G.carCd[s.id] = G.t + 55;
+  const A = s.anchor;
+  const icon = (RES_DEF.find(r => r[0] === k) || ['', ''])[1];
+  G.caravans.push({
+    caravan: true, trade: true, buy: true, fromSite: s.id, res: k, amount: adet, gold: bedel, icon, leg: 0,
+    x: A.x, y: A.y + 40, hp: 280, maxHp: 280, dir: 0, walk: 0, flash: 0,
+    from: siteName(s.id).replace(' Karakolu', ''), toName: 'Tüccar',
+    pts: [[MERCHANT.x - 40, MERCHANT.y + 40]], i: 0,
+  });
+  toast('🐪 Alım kervanı: ' + siteName(s.id).replace(' Karakolu', '') + ' → Göçebe Tüccar (' + bedel + '🪙 → ' + adet + icon + ')');
+  save();
+  return true;
+}
 // Boştaki üs: ambarı %75+ dolu bir kaynağı, o kaynağa muhtaç başka bir üsse kervanla gönderir
 function autoCaravan(s, sites) {
   if (VISIT || ISLAND || G.caveRun || G.dead) return;
@@ -2419,17 +2498,16 @@ function autoCaravan(s, sites) {
   if ((G.carCd[s.id] || 0) > G.t) return;                       // aynı üs sürekli kervan yollamasın
   if (G.caravans.some(c => c.fromSite === s.id)) return;        // yoldaki kervanı bitirsin
   const cap = s.id === 'village' ? stockCap() : opStockCap(s.op);
-  // İki ayrı eşik: YARDIM için ambarın %75'i (bolluk varsa paylaş), SATIŞ için
-  // %55 (yapacak iş kalmayınca altın üretmek asıl amaç — karakol yükseltmesi ve
-  // asker/köylü bedelleri altın istiyor, kaynak yığılı dururken tıkanmasın).
-  const fazla = [], satilir = [];
+  // YARDIM ÖNCE GELİR. Satış eşiği yardım eşiğinden düşük olunca (%55 / %75)
+  // ambar hiç %75'e ulaşamıyor, kaynak tüccara gidiyor ve muhtaç üsse yardım
+  // kervanı hiç çıkmıyordu. Artık ikisi de %75; satış YALNIZCA muhtaç üs yoksa
+  // ya da altın gerçekten gerekliyse (aşağıda) devreye girer.
+  const fazla = [];
   for (const [k] of RES_DEF) {
     if (k === 'gold' || k === 'gems') continue;                 // değerliler kervanla taşınmaz
-    const v = Math.floor(s.stock[k] || 0);
-    if (v >= cap * 0.75) fazla.push(k);
-    if (v >= cap * 0.55) satilir.push(k);   // ayrılan pay autoSat içinde düşülür
+    if (Math.floor(s.stock[k] || 0) >= cap * 0.75) fazla.push(k);
   }
-  if (!fazla.length) return autoSat(s, satilir, cap);
+  if (!fazla.length) return autoSat(s, cap);
   // en muhtaç üssü seç: ambarı %40'ın altında olan
   let hedef = null, enAz = 1e9;
   for (const t of sites) {
@@ -2440,7 +2518,7 @@ function autoCaravan(s, sites) {
       if (tv < tcap * 0.4 && tv < enAz) { enAz = tv; hedef = { t, k, tcap }; }
     }
   }
-  if (!hedef) return autoSat(s, satilir, cap);   // kimse muhtaç değil → fazlayı tüccara sat
+  if (!hedef) return autoSat(s, cap);   // kimse muhtaç değil → fazlayı tüccara sat
   const k = hedef.k;
   const yuk = Math.min(80, Math.floor((s.stock[k] || 0) - cap * 0.5), hedef.tcap - Math.floor(hedef.t.stock[k] || 0));
   if (yuk < 10) return;                                          // küçük yük için kervan kaldırmaya değmez
@@ -2489,8 +2567,19 @@ function bekleyenIhtiyac(s) {
   }
   return need;
 }
-function autoSat(s, fazla, cap) {
-  const satilir = fazla.filter(k => SAT_FIYAT[k]);
+function autoSat(s, cap) {
+  // ALTIN GEREKİYOR MU? Sıradaki iş altın istiyorsa (karakol seviyesi, sur,
+  // köylü daveti, asker) daha düşük eşikten satarız; istemiyorsa yalnız gerçek
+  // taşma (%75) satılır ki yardım kervanına kaynak kalsın.
+  const bekleyen = bekleyenIhtiyac(s);
+  const altinLazim = (bekleyen.gold || 0) > Math.floor(G.res.gold || 0)
+    || (G.res.gold || 0) < VILLAGER_COST.gold * 2;
+  const esik = altinLazim ? 0.55 : 0.75;
+  const satilir = [];
+  for (const [k] of RES_DEF) {
+    if (!SAT_FIYAT[k]) continue;
+    if (Math.floor(s.stock[k] || 0) >= cap * esik) satilir.push(k);
+  }
   if (!satilir.length) return;
   // en çok biriken kaynağı sat
   let k = satilir[0];
@@ -6949,9 +7038,12 @@ function update(dt) {
       if (SC.ranged && bd < 130 && !rt) { // okçu asker: geri çekil
         const [nx2, ny2] = collide(s.x - Math.cos(s.dir) * SC.speed * dt, s.y - Math.sin(s.dir) * SC.speed * dt, 12);
         s.x = nx2; s.y = ny2; s.walk += dt * 10;
-      } else if (rt || bd > SC.range) { // rota varken hep yürü (duvar arkasına vurmaya çalışma)
-        const [nx2, ny2] = collide(s.x + Math.cos(s.dir) * SC.speed * dt, s.y + Math.sin(s.dir) * SC.speed * dt, 12);
-        s.x = nx2; s.y = ny2; s.walk += dt * 10;
+      } else if (rt || bd > SC.range) {
+        // navMove: duvar köşesinde kilitlenmesin (takip dalında hiç takılma
+        // sigortası yoktu — köşeye sıkışan birim sonsuza dek orada kalıyordu)
+        navMove(s, best.x, best.y, SC.speed, dt, 12, false);
+        s.walk += dt * 10;
+        if ((s.nvDead || 0) > 3) { s.pursue = null; s.pursueT = 0; navReset(s); }  // ulaşamıyorum, safa dön
       } else if (s.cd <= 0) {
         s.cd = SC.cd; s.swing = 0.18;
         const sdmg = s.tdmg || SC.dmg;
@@ -7066,8 +7158,9 @@ function update(dt) {
       if (rt) c.pursueT = 6; // rotada ilerlerken takipten vazgeçme
       if (rt && rt.wx !== undefined) c.dir = Math.atan2(rt.wy - c.y, rt.wx - c.x);
       if (rt || bd > 58) {
-        const [nx2, ny2] = collide(c.x + Math.cos(c.dir) * C.speed * dt, c.y + Math.sin(c.dir) * C.speed * dt, 13);
-        c.x = nx2; c.y = ny2; c.walk += dt * 10;
+        navMove(c, best.x, best.y, C.speed, dt, 13, false);
+        c.walk += dt * 10;
+        if ((c.nvDead || 0) > 3) { c.pursue = null; c.pursueT = 0; navReset(c); }  // ulaşamıyorum, vazgeç
       } else if (c.cd <= 0) {
         c.cd = 1.0; c.swing = 0.18;
         damageEnemy(best, c.tdmg, c.x, c.y, false, c); // killer=c → leş sayılır
@@ -7119,7 +7212,8 @@ function update(dt) {
       toast(cv.supply
         ? '🐴 ' + cv.from + ' → ' + cv.toName + ' yardım kervanı yağmalandı! −' + cv.amount + cv.icon
         : cv.trade
-          ? '🐪 ' + cv.from + ' satış kervanı yağmalandı! −' + (cv.leg ? cv.gold + '🪙' : cv.amount + cv.icon)
+          ? '🐪 ' + cv.from + (cv.buy ? ' alım' : ' satış') + ' kervanı yağmalandı! −'
+              + (cv.buy ? (cv.leg ? cv.amount + cv.icon : cv.gold + '🪙') : (cv.leg ? cv.gold + '🪙' : cv.amount + cv.icon))
           : '🐴 ' + cv.from + ' kervanı yağmalandı! −' + cv.gold + '🪙', true);
       continue;
     }
@@ -7127,17 +7221,23 @@ function update(dt) {
       const A = cv.fromSite === 'village' ? CAMPFIRE : OUTPOSTS[cv.fromSite];
       const [tx4, ty4] = cv.leg === 0 ? cv.pts[0] : [A.x, A.y + 40];
       if (dist(cv.x, cv.y, tx4, ty4) < 46) {
-        if (cv.leg === 0) {   // takas: yük gitti, kese doldu
+        if (cv.leg === 0) {   // takas noktası: yük ↔ altın el değiştirir
           cv.leg = 1; cv.gotGold = true;
           spawnParts(cv.x, cv.y - 24, 10, { colors: ['#ffd257', '#fff3c9'], v: 50, life: 0.7, g: -20 });
-          addFloater(cv.x, cv.y - 46, '🐪 ' + cv.amount + cv.icon + ' → ' + cv.gold + '🪙', '#ffd257', 13);
+          addFloater(cv.x, cv.y - 46, cv.buy ? '🐪 ' + cv.gold + '🪙 → ' + cv.amount + cv.icon
+                                             : '🐪 ' + cv.amount + cv.icon + ' → ' + cv.gold + '🪙', '#ffd257', 13);
           SFX.coin();
         } else {
           cv.dead = true;
-          gain({ gold: cv.gold }, tx4, ty4 - 30);
+          if (cv.buy) {
+            addStock(cv.res, cv.amount, tx4, ty4 - 30, cv.fromSite === 'village' ? null : cv.fromSite);
+            toast('🐪 Alım kervanı döndü — ' + cv.from + ' ambarına +' + cv.amount + cv.icon);
+          } else {
+            gain({ gold: cv.gold }, tx4, ty4 - 30);
+            toast('🐪 Satış kervanı döndü — ' + cv.from + ' kasasına +' + cv.gold + '🪙');
+          }
           G.stats.caravans++;
           SFX.coin();
-          toast('🐪 Satış kervanı döndü — ' + cv.from + ' kasasına +' + cv.gold + '🪙');
           save();
         }
         continue;
@@ -7209,8 +7309,9 @@ function update(dt) {
         const [nx2, ny2] = collide(g.x - Math.cos(g.dir) * GC.speed * dt, g.y - Math.sin(g.dir) * GC.speed * dt, 12);
         g.x = nx2; g.y = ny2; g.walk += dt * 10;
       } else if (bd > GC.range) {
-        const [nx2, ny2] = collide(g.x + Math.cos(g.dir) * GC.speed * dt, g.y + Math.sin(g.dir) * GC.speed * dt, 12);
-        g.x = nx2; g.y = ny2; g.walk += dt * 10;
+        navMove(g, best.x, best.y, GC.speed, dt, 12, false);
+        g.walk += dt * 10;
+        if ((g.nvDead || 0) > 3) navReset(g);   // köşede kilitlenme: devriyeye dön
       } else if (g.cd <= 0) {
         g.cd = GC.cd; g.swing = 0.18;
         const gdmg = g.tdmg || GC.dmg;
@@ -8515,14 +8616,27 @@ function render() {
   for (const s of G.soldiers) list.push({ y: s.y, f: () =>
     drawWarrior(s, { cloth: s.cls === 'shield' ? '#4a6a8e' : '#5c7a9e', scale: s.cls === 'shield' ? 0.64 : 0.6, hpBar: true, hpColor: '#57d364', belt: true, helmet: '#9aa3b0', bow: s.cls === 'bow', shield: s.cls === 'shield' }) });
   // komutanlar: iri, sancak rengi tepelikli, isim + seviye + görev etiketi
-  for (const c of G.commanders) if (vis(c.x, c.y)) list.push({ y: c.y, f: () => {
-    const C = COMMANDERS[c.id];
-    drawWarrior(c, { cloth: C.cloth, scale: 1.28, hpBar: true, hpColor: '#ffd257', belt: true, helmet: '#55555f', crest: C.crest });
-    ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd97e';
-    const ord = c.order === 'raid' ? ' · 💰 yağmada' : (c.order || '').indexOf('guard:') === 0 ? ' · 🛡️ devriyede' : '';
-    ctx.fillText(C.icon + ' ' + C.name + ' · Sv.' + c.lv + ord, c.x, c.y - 78);
-  } });
+  // Komutan etiketleri: yan yana duran komutanların yazıları üst üste binip
+  // okunmaz hâle geliyordu — yakındakiler kademeli olarak yukarı kaydırılır.
+  const cmdEtiketY = [];
+  for (const c of G.commanders) if (vis(c.x, c.y)) {
+    let ey = c.y - 78;
+    for (let g2 = 0; g2 < 6; g2++) {                       // boş satır bulana dek yukarı çık
+      if (!cmdEtiketY.some(e => Math.abs(e.x - c.x) < 150 && Math.abs(e.y - ey) < 15)) break;
+      ey -= 15;
+    }
+    cmdEtiketY.push({ x: c.x, y: ey });
+    const eyy = ey;
+    list.push({ y: c.y, f: () => {
+      const C = COMMANDERS[c.id];
+      drawWarrior(c, { cloth: C.cloth, scale: 1.28, hpBar: true, hpColor: '#ffd257', belt: true, helmet: '#55555f', crest: C.crest });
+      ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+      const ord = c.order === 'raid' ? ' · 💰 yağmada' : (c.order || '').indexOf('guard:') === 0 ? ' · 🛡️ devriyede' : '';
+      const yazi = C.icon + ' ' + C.name + ' · Sv.' + c.lv + ord;
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(14,10,6,0.7)'; ctx.strokeText(yazi, c.x, eyy);
+      ctx.fillStyle = '#ffd97e'; ctx.fillText(yazi, c.x, eyy);
+    } });
+  }
   // komutanların öz ordusu: komutan kumaşında küçük askerler
   for (const c of G.commanders) for (const t of (c.troops || [])) if (vis(t.x, t.y)) list.push({ y: t.y, f: () =>
     drawWarrior(t, { cloth: COMMANDERS[c.id].cloth, scale: 0.6, hpBar: true, hpColor: '#ffd257', belt: true, helmet: '#7a7a85' }) });
@@ -8646,7 +8760,7 @@ function render() {
     if (Math.cos(cv.dir) < 0) ctx.scale(-1, 1);
     ctx.fillStyle = '#4f3319';
     ctx.beginPath(); ctx.arc(-10, -3, 5, 0, TAU); ctx.arc(6, -3, 5, 0, TAU); ctx.fill(); // tekerler
-    const satisDolu = cv.trade && cv.leg === 0;                                    // giderken yüklü, dönerken keseli
+    const satisDolu = cv.trade && (cv.buy ? cv.leg === 1 : cv.leg === 0);          // satışta giderken, alımda dönerken yüklü
     ctx.fillStyle = cv.supply || satisDolu ? '#6b7a3f' : '#8a5c33'; ctx.fillRect(-16, -16, 24, 11); // kasa
     if (cv.supply || satisDolu) { ctx.fillStyle = '#9fb060'; ctx.fillRect(-14, -19, 20, 4); } // yüklü çuval sırtı
     else { ctx.fillStyle = '#ffd257'; ctx.fillRect(-13, -14, 6, 4); ctx.fillRect(-4, -14, 6, 4); } // altın çuvalları
@@ -8654,7 +8768,7 @@ function render() {
     ctx.restore();
     if (cv.supply || cv.trade) { // ne taşıdığı ve nereye gittiği başında yazsın
       ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(cv.trade && cv.leg ? '🪙' : cv.icon, cv.x, cv.y - 32);
+      ctx.fillText(cv.trade && (cv.buy ? !cv.leg : cv.leg) ? '🪙' : cv.icon, cv.x, cv.y - 32);
       ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = cv.trade ? '#ffd97e' : '#c8e0a8';
       ctx.fillText('→ ' + (cv.trade ? (cv.leg ? cv.from : 'Tüccar') : cv.toName), cv.x, cv.y - 44);
     }
