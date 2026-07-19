@@ -1511,8 +1511,15 @@ function coopMsg(m) {
   }
   if (ev === 'pos') {
     const p = coopPeer(d);
+    // Paketler arası boşlukta yoldaş DURUYOR, paket gelince zıplıyordu ("atlaya
+    // atlaya"). Son iki paketten HIZ çıkarıp aradaki boşluğu o hızla dolduruyoruz.
+    const now = performance.now() / 1000;
+    const dtp = clamp(now - (p.lastT || now), 0.04, 0.6);
+    if (p.lastT !== undefined) { p.vx = (d.x - p.tx) / dtp; p.vy = (d.y - p.ty) / dtp; }
+    p.lastT = now; p.extT = 0;
     p.tx = d.x; p.ty = d.y; p.dir = d.a || 0; p.hp = d.h || 1; p.maxHp = d.m || 1;
     p.riding = !!d.r; p.moving = !!d.w; p.swing = d.s ? 0.18 : p.swing;
+    if (!p.moving) { p.vx = 0; p.vy = 0; }   // durduğunu söylediyse ileri sürme
     return;
   }
   if (ev === 'w') { if (!CO.isHost) coopApplyWorld(d); return; }
@@ -1607,28 +1614,72 @@ function coopBroadcastWorld() {
 }
 // HOST → misafirler: yavaş değişen dünya durumu (binalar, kaynaklar, yapılar, sur, ambar, hava)
 function coopBroadcastState() {
-  const b = [];
+  // Binalar KONUMLA gönderilir, arsa indeksiyle değil: karakol arsaları fetih
+  // sırasına, genişletme arsaları kademe sırasına göre eklendiğinden iki tarafın
+  // dizi sırası farklı olabiliyor ve indeks eşlemesi yanlış arsaya düşüyordu.
+  const b2 = [];
   for (const bd of G.buildings) {
     if (bd.type === 'campfire') continue;
-    const pi = G.plots.findIndex(p => p.x === bd.x && p.y === bd.y);
-    if (pi >= 0) b.push([pi, bd.type, bd.lv, bd.ruined ? 1 : 0, bd.villager ? 1 : 0]);
+    b2.push([Math.round(bd.x), Math.round(bd.y), bd.type, bd.lv, bd.ruined ? 1 : 0, bd.villager ? 1 : 0]);
+  }
+  // KARAKOLLAR: fetih, seviye, sur ve kapı durumu (fetih sırası korunur)
+  const ops = [];
+  for (const [id, o] of Object.entries(G.outposts)) {
+    if (!o || o.isVillage || !o.owned || !OUTPOSTS[id]) continue;
+    ops.push([id, o.lv || 1, o.wall ? 1 : 0,
+      o.wallGateHp === undefined ? -1 : Math.round(o.wallGateHp), o.looted ? 1 : 0]);
   }
   const nd = [];
   G.nodes.forEach((n, i) => { if (!n.alive) nd.push(i); }); // kırılmış kaynaklar
   const st = G.structures.map(s => [s.kind + '|' + (s.site || ''), s.alive ? 1 : 0, Math.round(s.hp)]);
   const stock = {}, res = {};
   for (const [k] of RES_DEF) { if (G.stock[k]) stock[k] = Math.floor(G.stock[k]); if (G.res[k]) res[k] = Math.floor(G.res[k]); }
-  coopSend('ws', { b, nd, st, stock, res, wx: G.weather || 'clear', tier: G.villageTier,
+  coopSend('ws', { b2, ops, nd, st, stock, res, wx: G.weather || 'clear', tier: G.villageTier,
+    fl: [G.camp1Destroyed ? 1 : 0, G.chestOpened ? 1 : 0, G.legionConquered ? 1 : 0],
     pal: [G.palisade.built ? 1 : 0, G.palisade.lv, Math.round(G.palisade.gate.hp), G.palisade.gate.alive ? 1 : 0] });
 }
 // MİSAFİR: ev sahibinin dünya durumunu birebir uygular
 function coopApplyState(d) {
+  // 0) KÖY GENİŞLEMESİ ve KARAKOLLAR binalardan ÖNCE kurulur: bina konumları
+  //    ancak o arsalar açıldıktan sonra karşılık bulur.
+  if (d.tier && d.tier > G.villageTier) {
+    for (let t = G.villageTier + 1; t <= d.tier; t++) addExpansionPlots(t);
+    G.villageTier = d.tier; rebuildPalisade();
+    toast('🏗️ Köy genişledi (yoldaşın)');
+  }
+  if (d.fl) { G.camp1Destroyed = !!d.fl[0]; G.chestOpened = !!d.fl[1]; G.legionConquered = !!d.fl[2]; }
+  for (const o of (d.ops || [])) {
+    const [oid, lv, wall, gateHp, looted] = o;
+    if (!OUTPOSTS[oid]) continue;
+    let op = G.outposts[oid];
+    if (!op) {   // yoldaşın burayı fethetmiş: sancağı ve arsaları bende de aç
+      op = G.outposts[oid] = { owned: true, looted: false, garrison: 0, lv: 1, garrisonCls: [], stock: {}, auto: false };
+      G.structures.push({ kind: 'banner', site: oid, x: OUTPOSTS[oid].x, y: OUTPOSTS[oid].y,
+        hp: outpostBannerHp(1), maxHp: outpostBannerHp(1), alive: true });
+      G.enemies = G.enemies.filter(e => e.camp !== oid);
+      spawnParts(OUTPOSTS[oid].x, OUTPOSTS[oid].y - 40, 16, { colors: ['#ffd257', '#fff3c9'], v: 50, life: 1.1, g: -25 });
+      toast('🏳️ ' + OUTPOSTS[oid].name + ' fethedildi (yoldaşın)');
+    }
+    if (op.lv !== lv) {
+      op.lv = lv;
+      const bn = G.structures.find(x => x.kind === 'banner' && x.site === oid);
+      if (bn) { bn.maxHp = outpostBannerHp(lv); bn.hp = bn.maxHp; }
+      toast('🏳️ ' + OUTPOSTS[oid].name.replace(' Karakolu', '') + ' Sv.' + lv + ' oldu (yoldaşın)');
+    }
+    op.looted = !!looted;
+    opAddPlots(oid, OUTPOST_PLOT_N[Math.min(3, lv)] || OUTPOST_PLOT_N[1]);   // deterministik: iki tarafta aynı yerler
+    const surDegisti = (!!op.wall) !== !!wall;
+    op.wall = wall; if (gateHp >= 0) op.wallGateHp = gateHp;
+    if (surDegisti || wall) rebuildOutpostWalls();
+    if (KEEP_SITES.includes(oid)) rebuildKeepWalls();
+    if (surDegisti && wall) toast('🪵 ' + OUTPOSTS[oid].name.replace(' Karakolu', '') + ' suru dikildi (yoldaşın)');
+  }
   const gorulen = new Set();
-  for (const a of (d.b || [])) { // binalar: arsa indeksiyle eşleşir
-    const [pi, type, lv, ruined, vill] = a;
-    const pl = G.plots[pi];
+  for (const a of (d.b2 || [])) { // binalar: KONUMLA eşleşir (arsa indeksi değil)
+    const [bx, by, type, lv, ruined, vill] = a;
+    const pl = G.plots.find(p => Math.abs(p.x - bx) < 7 && Math.abs(p.y - by) < 7);
     if (!pl || !BUILDINGS[type]) continue;
-    gorulen.add(pi);
+    gorulen.add(pl);
     let bd = G.buildings.find(x => x.x === pl.x && x.y === pl.y);
     if (!bd) {
       pl.built = type; delete pl.paid;
@@ -1652,8 +1703,8 @@ function coopApplyState(d) {
   }
   for (const bd of G.buildings.slice()) { // ev sahibinde olmayan bina bende de olmamalı
     if (bd.type === 'campfire') continue;
-    const pi = G.plots.findIndex(p => p.x === bd.x && p.y === bd.y);
-    if (pi >= 0 && !gorulen.has(pi)) { G.buildings = G.buildings.filter(x => x !== bd); G.plots[pi].built = null; }
+    const pl = G.plots.find(p => p.x === bd.x && p.y === bd.y);
+    if (pl && !gorulen.has(pl)) { G.buildings = G.buildings.filter(x => x !== bd); pl.built = null; }
   }
   const olu = new Set(d.nd || []); // kaynak düğümleri: onun kırdığı bende de kırık
   G.nodes.forEach((n, i) => {
@@ -1670,11 +1721,6 @@ function coopApplyState(d) {
     G.palisade.built = !!d.pal[0];
     if (G.palisade.lv !== d.pal[1]) { G.palisade.lv = d.pal[1]; rebuildPalisade(); }
     G.palisade.gate.hp = d.pal[2]; G.palisade.gate.alive = !!d.pal[3];
-  }
-  if (d.tier && d.tier > G.villageTier) { // köy genişlemiş: yeni arsalar bende de açılsın
-    for (let t = G.villageTier + 1; t <= d.tier; t++) addExpansionPlots(t);
-    G.villageTier = d.tier; rebuildPalisade();
-    toast('🏗️ Köy genişledi (yoldaşın)');
   }
   if (d.stock) for (const [k] of RES_DEF) G.stock[k] = d.stock[k] || 0;
   if (d.res && VISIT) for (const [k] of RES_DEF) G.res[k] = d.res[k] || 0; // ziyarette cep = ev sahibinin kesesi
@@ -1721,37 +1767,50 @@ function coopApplyWorld(d) {
   G.night = !!d.n;
 }
 // Her karede: konum yayını, dünya yayını, yoldaş yumuşatma, kopan bağlantı onarımı
+// Yoldaş konumlarını yumuşat (ölü hesap + yakınsama) ve sessizleşeni düşür
+function coopSmoothPeers(dt) {
+  for (const id of Object.keys(CO.peers)) {
+    const p = CO.peers[id];
+    if (G.t - p.last > 12) { toast('⚪ ' + p.name + ' bağlantısı koptu'); delete CO.peers[id]; coopRecalcHost(); continue; }
+    p.extT = (p.extT || 0) + dt;
+    // Ölü hesap en fazla 200 ms sürer ve boşluk uzadıkça SÖNER: paket gecikirse
+    // yoldaşı sonsuza dek ileri sürüp sonra geri çekmek, doldurmaya çalıştığımız
+    // sıçramanın daha kötüsünü üretiyor.
+    const ex = Math.min(p.extT, 0.2) * (1 - Math.min(1, p.extT / 0.5) * 0.55);
+    const gx = p.tx + (p.vx || 0) * ex, gy = p.ty + (p.vy || 0) * ex;
+    const k = 1 - Math.pow(0.0015, dt);                     // yumuşak ama hızlı yakınsama
+    if (Math.abs(gx - p.x) > 400 || Math.abs(gy - p.y) > 400) { p.x = gx; p.y = gy; }
+    else { p.x += (gx - p.x) * k; p.y += (gy - p.y) * k; }
+    if (Math.hypot(gx - p.x, gy - p.y) > 1.5 || p.moving) p.walk += dt * 9;
+    p.swing = Math.max(0, (p.swing || 0) - dt);
+  }
+}
 function coopTick(dt) {
   if (!NETP) return;
   if (!CO.ws && CO.topic) { CO.retryT -= dt; if (CO.retryT <= 0) coopOpen(); return; }
   if (!coopOn()) return;
   CO.hbT += dt;
   if (CO.hbT > 25) { CO.hbT = 0; try { CO.ws.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: 'hb' })); } catch (e) { } }
-  // kendi konumum (10/sn)
+  // Kendi konumum: HAREKET EDERKEN 18/sn (ölü hesapla birleşince akıcı görünür),
+  // DURURKEN 2/sn. Sürekli 18 Hz yayın, kimse kıpırdamazken bile sunucu kotasını
+  // boşuna yiyordu; duran oyuncunun zaten aktarılacak bir hareketi yok.
+  const pl2 = G.player;
+  const hareketli = pl2.moving || pl2.swing > 0 || CO.lastSentMove;
   CO.posT += dt;
-  if (CO.posT >= 0.1) {
+  if (CO.posT >= (hareketli ? 0.055 : 0.5)) {
     CO.posT = 0;
-    const p = G.player;
-    coopSend('pos', { x: Math.round(p.x), y: Math.round(p.y), a: +(p.dir || 0).toFixed(2),
-      h: Math.round(p.hp), m: Math.round(p.maxHp), r: G.riding ? 1 : 0, w: p.moving ? 1 : 0, s: p.swing > 0 ? 1 : 0 });
+    CO.lastSentMove = !!pl2.moving;
+    coopSend('pos', { x: Math.round(pl2.x), y: Math.round(pl2.y), a: +(pl2.dir || 0).toFixed(2),
+      h: Math.round(pl2.hp), m: Math.round(pl2.maxHp), r: G.riding ? 1 : 0, w: pl2.moving ? 1 : 0, s: pl2.swing > 0 ? 1 : 0 });
   }
   // host: dünya yayını (yalnız yanında biri varsa)
   if (CO.isHost && coopPeerCount() > 0) {
     CO.worldT += dt;
     if (CO.worldT >= 0.16) { CO.worldT = 0; coopBroadcastWorld(); }
     CO.stockT = (CO.stockT || 0) + dt; // dünya durumu: bina/kaynak/yapı/sur/ambar/hava
-    if (CO.stockT >= 2.5) { CO.stockT = 0; coopBroadcastState(); }
+    if (CO.stockT >= 1.2) { CO.stockT = 0; coopBroadcastState(); }
   }
-  // yoldaşların konumunu yumuşat + sessizleşeni düşür
-  for (const id of Object.keys(CO.peers)) {
-    const p = CO.peers[id];
-    if (G.t - p.last > 12) { toast('⚪ ' + p.name + ' bağlantısı koptu'); delete CO.peers[id]; coopRecalcHost(); continue; }
-    const k = Math.min(1, dt * 10);
-    if (Math.abs(p.tx - p.x) > 400 || Math.abs(p.ty - p.y) > 400) { p.x = p.tx; p.y = p.ty; }
-    else { p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k; }
-    if (Math.hypot(p.tx - p.x, p.ty - p.y) > 1.5 || p.moving) p.walk += dt * 9;
-    p.swing = Math.max(0, (p.swing || 0) - dt);
-  }
+  coopSmoothPeers(dt);
   // misafir: host'un düşmanlarını yumuşatarak taşı
   if (coopSlave()) {
     for (const e of G.enemies) {
@@ -5579,6 +5638,7 @@ function sortie(st) {
 
 // ---------- Kaleye Sızma: kuşatma sürerken 60 sn'de bir "Gölge Sızması" mini oyunu ----------
 // 3 aşamalı zamanlama halkası: ibre dönerken yeşil bölgede durdur; her aşama daha dar + hızlı.
+const INFIL_CD = 180;   // sızma bekleme süresi (sn)
 const INFIL_STAGES = [
   { t: '🧗 Surlara tırman', spd: 2.6, half: 0.44 },
   { t: '🕶️ Nöbetçiyi atlat', spd: 3.5, half: 0.30 },
@@ -5711,7 +5771,7 @@ function finishInfil(ok, sebep) {
   const f = G.infil;
   if (!f) return; // zaten bitti (çift çağrı güvencesi)
   const st = INFIL_SITES().find(s2 => s2.id === f.site);
-  G.infil = null; G.infilCd = 60;
+  G.infil = null; G.infilCd = INFIL_CD;
   document.body.classList.remove('infil');
   if (!ok || !st) { // yakalandın: alarm! kazanımlar da gitti
     banner('🚨 YAKALANDIN!');
