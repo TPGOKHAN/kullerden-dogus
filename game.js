@@ -666,7 +666,12 @@ const xpNeed = lv => lv <= 30 ? 80 + lv * 60 : 1880 + (lv - 30) * 25;
 // AYNEN korunur (mevcut kayıtlar etkilenmesin), ondan sonrası yavaşlar — yoksa
 // doğrusal artışla 100. seviye ulaşılamaz bir sayıya çıkıyordu.
 const LEVEL_MAX = 100;
-const soldierCap = () => Math.min(12, 2 + Math.floor(G.level / 2)); // sadece karakter seviyesi (kışla yeni birim açar, kapasite vermez)
+// Asker kapasitesi: Sv.20'ye kadar ESKİ eğri (2 + sv/2, tavan 12 — mevcut
+// kayıtlar birebir korunur), sonrası 4 seviyede bir +1, Sv.84'te 28'e oturur.
+// Eskiden 12'de sabitleniyordu: Sv.20'den Sv.100'e kadar ordu hiç büyümüyordu.
+const soldierCap = () => G.level <= 20
+  ? Math.min(12, 2 + Math.floor(G.level / 2))
+  : Math.min(28, 12 + Math.floor((G.level - 20) / 4));
 const playerMaxHp = () => { const gs = gearStats(G.equip); return Math.round((100 + gs.hp + 25 * (G.dynUpg.vigor || 0) + (G.level - 1) * 10) * (1 + gs.hpp / 100) * BAL.php); };
 const playerSpeed = () => (225 + gearStats(G.equip).spd) * (1 + 0.08 * (G.dynUpg.swift || 0)) * (G.feastT > 0 ? 1.1 : 1) * (G.riding ? 1.55 : 1) * ((G.player.slowT || 0) > 0 ? 0.6 : 1); // ziyafet + at + donma
 // İnşaat maliyeti indirimi (Usta İnşaatçılar)
@@ -7264,8 +7269,17 @@ function update(dt) {
       }
     } else {
       // formasyon: oyuncunun arkasında (sur araya girdiyse kapı ağzından dolaş)
-      const a = p.dir + Math.PI, spread = (i - (G.soldiers.length - 1) / 2) * 0.7;
-      let fx = p.x + Math.cos(a + spread) * 58, fy = p.y + Math.sin(a + spread) * 58;
+      // Formasyon SAFLARA bölünür (saf başına 6). Tek yayda dizmek 12 askere
+      // kadar iyiydi; 28'de yay 2π'yi aşıp askerler oyuncunun etrafını sarıyordu.
+      const SAF = 5;
+      const saf = Math.floor(i / SAF), yer = i % SAF;
+      const nSaf = Math.min(SAF, G.soldiers.length - saf * SAF);
+      const yari = 70 + saf * 38;
+      // Açı adımı YARIÇAPA göre: sabit açı kullanınca iç safta yay uzunluğu
+      // 23px'e düşüp askerler üst üste biniyordu (asker çapı 24px).
+      const adim = Math.min(0.7, 44 / yari);
+      const a = p.dir + Math.PI, spread = (yer - (nSaf - 1) / 2) * adim;
+      let fx = p.x + Math.cos(a + spread) * yari, fy = p.y + Math.sin(a + spread) * yari;
       const dd = dist(s.x, s.y, fx, fy);
       if (dd > 26) {
         const spd = dd > 300 ? SOLDIER.speed * 1.6 : SOLDIER.speed;
