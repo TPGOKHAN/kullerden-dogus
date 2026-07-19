@@ -279,3 +279,18 @@ body.infil #btnFriends, body.infil #btnWorld, body.infil #btnSettings { display:
 /* Menü butonları katmanın üstünde kalsın: panel açıkken doğrudan başka panele geçilebilir */
 #btnMap, #btnMute, #btnBag, #btnArmy, #btnFriends, #btnWorld, #btnSettings { z-index: 21; }
 body.infil #panelBack { display: none !important; }
+
+
+/* HUD bildirim topu: yapılacak iş varken butonun sağ altında belirir, 10 sn'de bir zıplar */
+.hudDot { position: absolute; right: -3px; bottom: -3px; width: 15px; height: 15px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff7a68, #c2201a); border: 2px solid rgba(255,255,255,.55);
+  box-shadow: 0 2px 7px rgba(0,0,0,.55), 0 0 10px rgba(230,60,45,.6); pointer-events: none;
+  animation: hudDotPop 10s ease-in-out infinite; }
+@keyframes hudDotPop {
+  0%, 80%   { transform: translateY(0) scale(1); }
+  84%       { transform: translateY(-11px) scale(1.18); }
+  88%       { transform: translateY(0) scale(.94); }
+  91%       { transform: translateY(-6px) scale(1.1); }
+  95%, 100% { transform: translateY(0) scale(1); }
+}
+body.infil .hudDot { display: none; }

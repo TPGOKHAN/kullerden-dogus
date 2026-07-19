@@ -1055,7 +1055,7 @@ function rebuildOutpostWalls() {
     }
     const ghp = op.wallGateHp !== undefined ? op.wallGateHp : OP_WALL.gateHp;
     G.structures.push({
-      kind: 'owgate', site,
+      kind: 'owgate', site, ang: gapDir, // kapı halkanın teğetine oturur
       x: O.x + Math.cos(gapDir) * OP_WALL.r, y: O.y + Math.sin(gapDir) * OP_WALL.r,
       hp: Math.max(0, ghp), maxHp: OP_WALL.gateHp, alive: ghp > 0,
     });
@@ -2498,6 +2498,37 @@ function toast(msg, bad) {
   elToasts.appendChild(t); setTimeout(() => t.remove(), 2200);
 }
 function banner(msg) { elBanner.textContent = msg; elBanner.classList.remove('show'); void elBanner.offsetWidth; elBanner.classList.add('show'); }
+// Kenar butonlarında "burada yapacak iş var" bildirimi (kırmızı zıplayan top)
+function hudDot(id, aktif) {
+  const b = $(id);
+  if (!b) return;
+  const d = b.querySelector('.hudDot');
+  if (aktif && !d) { const s = document.createElement('span'); s.className = 'hudDot'; b.appendChild(s); }
+  else if (!aktif && d) d.remove();
+}
+function refreshHudDots() {
+  if (MENU_OPEN || G.infil) return;
+  // 🎒 Çanta: çantada kuşandığından daha iyi bir parça var mı (oyuncu + komutanlar)
+  let daha = false;
+  const kadrolar = [G.equip].concat(G.commanders.map(c => c.gear || {}));
+  for (const it of G.bag) {
+    const sk = GEAR_BASES[it.b].slot, sc = gearScore(it);
+    for (const eq of kadrolar) if (sc > (eq[sk] ? gearScore(eq[sk]) : -1)) { daha = true; break; }
+    if (daha) break;
+  }
+  hudDot('btnBag', daha);
+  // 🎖️ Ordu: terfi bekleyen asker (XP dolu + altın yeter) ya da görevsiz komutan
+  const terfi = G.soldiers.concat(G.garrisonUnits).some(u => {
+    const lv = u.lv || 1;
+    return lv < SOLDIER_LV_MAX && (u.xp || 0) >= sXpNeed(lv) && G.res.gold >= sPromoteCost(lv);
+  });
+  hudDot('btnArmy', terfi);
+  // 🌍 Cihan: yeni sefere çıkılabilir
+  hudDot('btnWorld', !!G.victoryShown && !VISIT && !ISLAND);
+  // 🤝 Yoldaşlar: çevrimiçi değilsen davet, çevrimiçiysen ziyaret edilebilir yoldaş
+  const yoldas = !NETP ? false : (G.netFriends || []).some(f => f.has_village && (BAL.visitSec - (f.used || 0)) > 60);
+  hudDot('btnFriends', yoldas && !VISIT && !ISLAND);
+}
 function updateHUD() {
   for (const [k] of RES_DEF) { const el = $('chip-' + k); const v = String(Math.floor(G.res[k])); if (el.textContent !== v) el.textContent = v; }
   const p = G.player;
@@ -6384,6 +6415,8 @@ function update(dt) {
       }
     }
   }
+  G.dotT = (G.dotT || 0) + dt;
+  if (G.dotT > 0.6) { G.dotT = 0; refreshHudDots(); }
   checkQuests();
   updateHUD();
   if (mapOpen && G.t - mapLastDraw > 0.3) drawMap();
@@ -7406,12 +7439,20 @@ function render() {
   for (const st of G.opStakes) if (vis(st.x, st.y)) list.push({ y: st.y, f: () => drawOpStake(st) });
   for (const s of G.structures) if (s.kind === 'owgate' && s.alive && vis(s.x, s.y)) list.push({ y: s.y, f: () => {
     drawShadow(s.x, s.y, 26, 8);
+    // Kapı, sur halkasının o noktadaki TEĞETİNE oturur (ang + 90°); sabit dikey
+    // çizilince halkanın eğimli kısımlarında yamuk duruyordu. Çizim merkeze göre.
+    ctx.save();
+    ctx.translate(s.x, s.y - 15);
+    ctx.rotate((s.ang || 0) + Math.PI / 2);
     ctx.fillStyle = '#6b4a26';
-    ctx.fillRect(s.x - 26, s.y - 34, 9, 36); ctx.fillRect(s.x + 17, s.y - 34, 9, 36);
+    ctx.fillRect(-27, -19, 9, 38); ctx.fillRect(18, -19, 9, 38);   // yan direkler
     ctx.fillStyle = '#8a6234';
-    ctx.fillRect(s.x - 19, s.y - 28, 38, 26);
+    ctx.fillRect(-19, -14, 38, 28);                                 // kapı kanadı
     ctx.strokeStyle = 'rgba(50,32,12,0.6)'; ctx.lineWidth = 1.5;
-    for (let i = -12; i <= 12; i += 8) { ctx.beginPath(); ctx.moveTo(s.x + i, s.y - 28); ctx.lineTo(s.x + i, s.y - 2); ctx.stroke(); }
+    for (let i = -12; i <= 12; i += 8) { ctx.beginPath(); ctx.moveTo(i, -14); ctx.lineTo(i, 14); ctx.stroke(); }
+    ctx.fillStyle = '#c9a24a';                                      // demir halka
+    ctx.beginPath(); ctx.arc(0, 0, 3, 0, TAU); ctx.fill();
+    ctx.restore();
     if (s.hp < s.maxHp) {
       ctx.fillStyle = 'rgba(20,15,8,0.7)'; ctx.fillRect(s.x - 22, s.y - 44, 44, 5);
       ctx.fillStyle = '#d8763a'; ctx.fillRect(s.x - 22, s.y - 44, 44 * s.hp / s.maxHp, 5);
@@ -7531,6 +7572,18 @@ function render() {
       if (v > 0) parts.push(icon + v);
     }
     if (parts.length) drawTag(CAMPFIRE.x, CAMPFIRE.y - 112, '🏬 ' + parts.join(' '), '#ffe9b0', 'rgba(255,217,126,0.4)');
+  }
+  // Fethedilen üslerin ambarı: sancağın üstünde ne birikmiş görünsün
+  for (const [oid2, op3] of Object.entries(G.outposts)) {
+    if (!op3 || op3.isVillage || !op3.owned || op3.looted) continue;
+    const O3 = OUTPOSTS[oid2];
+    if (!O3 || !vis(O3.x, O3.y)) continue;
+    const par2 = [];
+    for (const [k2, ic2] of RES_DEF) {
+      const v2 = Math.floor((op3.stock || {})[k2] || 0);
+      if (v2 > 0) par2.push(ic2 + v2);
+    }
+    if (par2.length) drawTag(O3.x, O3.y - 92, '🏳️ ' + par2.join(' '), '#d8f0b8', 'rgba(150,210,120,0.45)');
   }
   // 🏝️ yoldaş hayaletleri: adadaki arkadaşların son bilinen konumları (sözde-canlılık)
   if (ISLAND && G.islandMates && G.islandMates.length) {
