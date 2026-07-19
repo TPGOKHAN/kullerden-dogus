@@ -418,6 +418,11 @@ const SIEGE_SITES = [
 ];
 const buildingMaxHp = lv => 200 + 100 * (lv - 1);
 const repairCost = type => Object.fromEntries(Object.entries(BUILDINGS[type].cost).map(([k, v]) => [k, Math.max(1, Math.ceil(v * 0.4))]));
+// Ayakta ama hasarlı bina: bedel hasar oranıyla ölçülür (tam yıkığın onarımı = repairCost)
+const bldKey = b => 'b' + Math.round(b.x) + '_' + Math.round(b.y);
+const bldHurt = b => b && !b.ruined && BUILDINGS[b.type] && b.hp < b.maxHp - 1;
+const fixCost = b => Object.fromEntries(Object.entries(repairCost(b.type))
+  .map(([k, v]) => [k, Math.max(1, Math.ceil(v * (1 - b.hp / b.maxHp)))]));
 const SWORD_LV = [
   { dmg: 10 },
   { dmg: 15, cost: { iron: 3, gold: 40 } },
@@ -943,11 +948,11 @@ const opWallGapDir = site => { const O = OUTPOSTS[site]; return Math.atan2(CAMPF
 function wallRings() {
   const rings = [];
   if (G.palisade.built)
-    rings.push({ cx: CAMPFIRE.x, cy: CAMPFIRE.y, r: palR(), gap: 0, village: true, gateUp: G.palisade.gate.alive });
+    rings.push({ cx: CAMPFIRE.x, cy: CAMPFIRE.y, r: palR(), gap: 0, gapA: palGapA(), village: true, gateUp: G.palisade.gate.alive });
   for (const [site, op] of Object.entries(G.outposts)) {
     if (!op || !op.wall || op.isVillage || !OP_WALL_SITES.includes(site)) continue;
     const og = G.structures.find(s2 => s2.kind === 'owgate' && s2.site === site);
-    rings.push({ cx: OUTPOSTS[site].x, cy: OUTPOSTS[site].y, r: OP_WALL.r, gap: opWallGapDir(site), oGate: og && og.alive ? og : null });
+    rings.push({ cx: OUTPOSTS[site].x, cy: OUTPOSTS[site].y, r: OP_WALL.r, gap: opWallGapDir(site), gapA: OP_WALL.gapA, oGate: og && og.alive ? og : null });
   }
   return rings;
 }
@@ -1022,8 +1027,15 @@ function wallRoute(x, y, tx, ty, isEnemy) {
       if (rg.village && rg.gateUp) return { attackVillageGate: true, ring: rg };
       if (rg.oGate) return { attackGate: rg.oGate, ring: rg };
     }
-    if (uIn) // içeriden çıkış: kapı dışındaki noktaya düz yürü (iç bölge dışbükey, engel yok)
-      return { wx: rg.cx + Math.cos(rg.gap) * (rg.r + 60), wy: rg.cy + Math.sin(rg.gap) * (rg.r + 60) };
+    if (uIn) {
+      // İçeriden çıkış İKİ adımdır. Doğrudan sur dışındaki kapı noktasına yönelirsek
+      // çizgi, kapı boşluğunun yanındaki sur parçasını keser: birim duvara yapışır,
+      // "kapı beni itiyor" görüntüsü çıkar. Önce kapının İÇ ağzına hizalan, sonra çık.
+      const ia = Math.atan2(y - rg.cy, x - rg.cx);
+      const koridorda = angDiff(ia, rg.gap) < (rg.gapA || 0.12) * 0.75;
+      const rr2 = koridorda ? rg.r + 60 : rg.r - 70;
+      return { wx: rg.cx + Math.cos(rg.gap) * rr2, wy: rg.cy + Math.sin(rg.gap) * rr2 };
+    }
     // dışarıdan giriş: kapı açısına yörünge; koridora gelince kapının İÇ noktasına düz (boşluktan geçer)
     return orbitToGap(x, y, rg) ||
       { wx: rg.cx + Math.cos(rg.gap) * (rg.r - 60), wy: rg.cy + Math.sin(rg.gap) * (rg.r - 60) };
@@ -2180,7 +2192,30 @@ function autoManage() {
     op._id = oid; op.stock = op.stock || {};
     sites.push({ id: oid, anchor: OUTPOSTS[oid], op, stock: op.stock, on: op.auto !== false });
   }
-  for (const s of sites) if (s.on && !autoSite(s)) autoCaravan(s, sites); // işi biten üs, ihtiyaç sahibine yardım yollar
+  for (const s of sites) {
+    if (!s.on) continue;
+    autoSmelt(s);                                   // demirci hurdayı boş durmadan eritir (inşaattan bağımsız)
+    if (!autoSite(s)) autoCaravan(s, sites);        // işi biten üs, ihtiyaç sahibine yardım yollar
+  }
+}
+// DEMİRCİ OCAĞI: üsste demirci varsa ambardaki hurda boş yatmaz — 5🔩 → 1⚙️ demir.
+// Görsel akış iki ayaklıdır: ambar → demirci (hurda uçar), ~1.4 sn sonra demirci → ambar (demir döner).
+function autoSmelt(s) {
+  if (VISIT || G.dead || G.caveRun) return;
+  G.smeltT = G.smeltT || {};
+  if ((G.smeltT[s.id] || 0) > G.t) return;
+  const sahip = s.id === 'village' ? null : s.id;
+  const oca = G.buildings.find(b => b.type === 'blacksmith' && !b.ruined && (b.outpost || null) === sahip);
+  if (!oca) return;
+  const cap = s.id === 'village' ? stockCap() : opStockCap(s.op);
+  if (Math.floor(s.stock.iron || 0) >= cap) return;                  // demir ambarı dolu
+  const parti = Math.min(3, Math.floor((s.stock.scrap || 0) / 5));    // seferde en çok 3 külçe
+  if (parti < 1) return;
+  s.stock.scrap -= parti * 5;
+  G.smeltT[s.id] = G.t + 9;
+  for (let i = 0; i < parti * 2; i++)
+    G.flyItems.push({ x0: s.anchor.x + rr(-14, 14), y0: s.anchor.y - 42, x1: oca.x + rr(-10, 10), y1: oca.y - 14, t: 0, icon: '🔩' });
+  (G.smelts = G.smelts || []).push({ site: s.id, n: parti, t: 1.4, x: oca.x, y: oca.y, ax: s.anchor.x, ay: s.anchor.y });
 }
 // Boştaki üs: ambarı %75+ dolu bir kaynağı, o kaynağa muhtaç başka bir üsse kervanla gönderir
 function autoCaravan(s, sites) {
@@ -2222,6 +2257,44 @@ function autoCaravan(s, sites) {
   toast('🐴 Yardım kervanı: ' + siteName(s.id).replace(' Karakolu', '') + ' → ' + siteName(hedef.t.id).replace(' Karakolu', '') + ' (' + yuk + icon + ')');
   save();
 }
+// Yeni köylüye meslek: üste EN AZ bulunan iş verilir (hepsi oduncu olmasın).
+// Eşitlikte sözlük sırası (odun → taş → hurda) korunur, böylece ilk köylü hep oduncudur.
+// Bir üste ikinci kez kurulmasının anlamı olmayan binalar (üretim yapmaz, sadece kilit açar).
+// Kereste/avcı/ambar/kule çoğaltılabilir; demirci/kışla/atölye ikincisi ölü arsa demektir.
+const UNIQ_BLD = ['blacksmith', 'barracks', 'siege'];
+const sitesahip = b => (b.outpost || null);
+const varMi = (type, sahip) => G.buildings.some(b => b.type === type && !b.ruined && sitesahip(b) === sahip);
+// Aynı üste iki demirci düşmüşse (eski kayıt / plan çakışması) fazlası ambara çevrilir —
+// arsa ölü kalmaz, seviye korunur, bina yıkılmaz.
+function dedupeUnique() {
+  const gorulen = {};
+  let degisti = 0;
+  for (const b of G.buildings) {
+    if (!UNIQ_BLD.includes(b.type) || b.ruined) continue;
+    const k = (b.outpost || 'village') + '|' + b.type;
+    if (!gorulen[k]) { gorulen[k] = b; continue; }
+    const eski = gorulen[k];
+    const fazla = (b.lv || 1) > (eski.lv || 1) ? eski : b;      // yüksek seviyeli olan kalır
+    if (fazla === eski) gorulen[k] = b;
+    const ad = BUILDINGS[fazla.type].name;
+    fazla.type = 'depot';
+    const pl = G.plots.find(p => Math.abs(p.x - fazla.x) < 6 && Math.abs(p.y - fazla.y) < 6);
+    if (pl) { pl.plan = 'depot'; pl.built = 'depot'; }
+    degisti++;
+    toast('🏚️ Fazladan ' + ad + ' vardı — ambara çevrildi (' + siteName(fazla.outpost || 'village').replace(' Karakolu', '') + ')');
+  }
+  if (degisti) save();
+}
+function eksikMeslek(siteId) {
+  const sahip = siteId === 'village' ? null : siteId;
+  const sayim = {};
+  for (const jk of Object.keys(VILLAGER_JOBS)) sayim[jk] = 0;
+  for (const b of G.buildings)
+    if (b.type === 'house' && b.villager && b.job && (b.outpost || null) === sahip && sayim[b.job] !== undefined) sayim[b.job]++;
+  let en = 'wood';
+  for (const jk of Object.keys(VILLAGER_JOBS)) if (sayim[jk] < sayim[en]) en = jk;
+  return en;
+}
 function autoSite(s) {
   const R = s.id === 'village' ? palR() + 300 : 340;
   const near = o => dist(o.x, o.y, s.anchor.x, s.anchor.y) < R;
@@ -2235,6 +2308,20 @@ function autoSite(s) {
       SFX.build(); autoSay(s.id, BUILDINGS[b.type].name + ' onarıldı 🔧'); save();
     }
     if (r1) return true;
+  }
+  // 1b) HASARLI (ama ayakta) bina tamiri — kapılardaki gibi 60 sn'lik bina başına sayaçla
+  for (const b of G.buildings) {
+    if (!bldHurt(b) || !near(b) || b.hp > b.maxHp * 0.9) continue;
+    if ((b.outpost || null) !== (s.id === 'village' ? null : s.id)) continue;
+    if (!gateReady(bldKey(b))) continue;
+    b.fixPaid = b.fixPaid || {};
+    const rf = autoPayFly(s, bcost(fixCost(b)), b.fixPaid, b.x, b.y);
+    if (rf === 2) {
+      delete b.fixPaid; b.hp = b.maxHp; gateUsed(bldKey(b));
+      spawnParts(b.x, b.y - 30, 8, { colors: ['#cfe0ff', '#9ab0d0'], v: 45, life: 0.6, g: 60 });
+      SFX.build(); autoSay(s.id, BUILDINGS[b.type].name + ' tamir edildi 🔧'); save();
+    }
+    if (rf) return true;
   }
   // 2) KAPILAR: kırık olan hemen onarılır, hasarlısı (%70 altı) beklemeden tamir edilir
   if (s.id === 'village' && G.palisade.built) {
@@ -2321,6 +2408,8 @@ function autoSite(s) {
   for (const pl of G.plots) {
     if (pl.built || !pl.plan || !near(pl)) continue;
     if ((pl.outpost || null) !== (s.id === 'village' ? null : s.id)) continue;
+    // aynı üste ikinci demirci/kışla/atölye kurulmaz: arsa ambara çevrilir
+    if (UNIQ_BLD.includes(pl.plan) && varMi(pl.plan, pl.outpost || null)) { pl.plan = 'depot'; delete pl.paid; }
     const B = BUILDINGS[pl.plan];
     if (B.req && !G.built[B.req]) continue;
     pl.paid = pl.paid || {};
@@ -2333,8 +2422,8 @@ function autoSite(s) {
     if (b.type !== 'house' || b.villager || b.ruined || !near(b)) continue;
     if ((b.outpost || null) !== (s.id === 'village' ? null : s.id)) continue;
     if (!canAfford(VILLAGER_COST)) break;
-    pay(VILLAGER_COST); b.villager = true; b.job = 'wood';
-    autoSay(s.id, 'yeni köylü davet edildi 👤 (oduncu)'); save();
+    pay(VILLAGER_COST); b.villager = true; b.job = eksikMeslek(s.id);
+    autoSay(s.id, 'yeni köylü davet edildi 👤 (' + VILLAGER_JOBS[b.job].name.toLowerCase() + ')'); save();
     return true;
   }
   // 5) garnizon askeri eğit (cepten altın+demir)
@@ -2506,16 +2595,18 @@ function hudDot(id, aktif) {
   if (aktif && !d) { const s = document.createElement('span'); s.className = 'hudDot'; b.appendChild(s); }
   else if (!aktif && d) d.remove();
 }
+// Bu kadronun çantada bekleyen daha iyi bir parçası var mı? (rozetler tek kaynaktan beslenir)
+function gearBetterFor(eq) {
+  eq = eq || {};
+  return G.bag.some(it => {
+    const sk = GEAR_BASES[it.b].slot;
+    return gearScore(it) > (eq[sk] ? gearScore(eq[sk]) : -1);
+  });
+}
 function refreshHudDots() {
   if (MENU_OPEN || G.infil) return;
   // 🎒 Çanta: çantada kuşandığından daha iyi bir parça var mı (oyuncu + komutanlar)
-  let daha = false;
-  const kadrolar = [G.equip].concat(G.commanders.map(c => c.gear || {}));
-  for (const it of G.bag) {
-    const sk = GEAR_BASES[it.b].slot, sc = gearScore(it);
-    for (const eq of kadrolar) if (sc > (eq[sk] ? gearScore(eq[sk]) : -1)) { daha = true; break; }
-    if (daha) break;
-  }
+  const daha = [G.equip].concat(G.commanders.map(c => c.gear || {})).some(gearBetterFor);
   hudDot('btnBag', daha);
   // 🎖️ Ordu: terfi bekleyen asker (XP dolu + altın yeter) ya da görevsiz komutan
   const terfi = G.soldiers.concat(G.garrisonUnits).some(u => {
@@ -2614,9 +2705,11 @@ function renderPanel() {
     if (!isP && !c) { G.panelFor = { gearPage: 'player' }; renderPanel(); return; }
     const eq = isP ? G.equip : c.gear;
     elPanelTitle.textContent = '🎒 Kuşam & Çanta';
-    let html = '<div class="gearTabs"><button class="gearTab' + (isP ? ' on' : '') + '" data-who="player">🧍 Kael</button>';
+    // Sekmelerde de ❗ göster: hangi kahramanın çantasında daha iyisi bekliyor, tek bakışta belli olsun
+    const tabRoz = eq2 => gearBetterFor(eq2) ? '<span class="tabBadge">!</span>' : '';
+    let html = '<div class="gearTabs"><button class="gearTab' + (isP ? ' on' : '') + '" data-who="player">🧍 Kael' + tabRoz(G.equip) + '</button>';
     for (const cc of G.commanders)
-      html += '<button class="gearTab' + (who === cc.id ? ' on' : '') + '" data-who="' + cc.id + '">' + COMMANDERS[cc.id].icon + ' ' + COMMANDERS[cc.id].name + '</button>';
+      html += '<button class="gearTab' + (who === cc.id ? ' on' : '') + '" data-who="' + cc.id + '">' + COMMANDERS[cc.id].icon + ' ' + COMMANDERS[cc.id].name + tabRoz(cc.gear) + '</button>';
     html += '</div>';
     // Kahraman vitrini: sol/sağ kuşam sütunları + merkez portre + isim plakası (çantada daha iyisi varsa ❗)
     const slotCell = sk => {
@@ -3396,6 +3489,20 @@ function renderPanel() {
       pitem('🔧 Onar', 'Bina yıkıldı, onarılana dek çalışmaz', rc, 'Onar', canAfford(rc),
         () => { pay(rc); b.ruined = false; b.hp = b.maxHp; SFX.build(); toast(B.name + ' onarıldı!'); save(); });
       return;
+    }
+    // Hasarlı ama ayakta: hasar oranına göre tamir, bina başına 60 sn bekleme
+    if (bldHurt(b)) {
+      const fc = bcost(fixCost(b));
+      const bek = gateWait(bldKey(b));
+      const yuzde = Math.round(100 * b.hp / b.maxHp);
+      pitem('🔧 Tamir et', 'Bina hasarlı: ❤️ ' + Math.ceil(b.hp) + '/' + b.maxHp + ' (%' + yuzde + ')' +
+        (bek ? ' — ustalar dinleniyor, ' + bek + ' sn' : ''), fc, bek ? '⏳ ' + bek + 'sn' : 'Tamir et',
+        !bek && canAfford(fc),
+        () => {
+          pay(fc); b.hp = b.maxHp; gateUsed(bldKey(b)); delete b.fixPaid;
+          spawnParts(b.x, b.y - 30, 10, { colors: ['#cfe0ff', '#9ab0d0'], v: 50, life: 0.7, g: 60 });
+          SFX.build(); toast(B.name + ' tamir edildi 🔧'); save();
+        });
     }
     // yükseltmeler artık menüsüz: binanın yanında dur, kaynaklar uçarak gitsin
     if (b.type === 'house') {
@@ -4488,7 +4595,11 @@ function collide(px, py, r, isEnemy) {
   const solids = [];
   for (const n of G.nodes) if (n.alive && n.kind !== 'scrap') solids.push([n.x, n.y, NODE_DEF[n.kind].r]);
   for (const b of G.buildings) solids.push([b.x, b.y, b.type === 'campfire' ? 34 : 30]); // konak daha geniş
-  for (const s of G.structures) if (s.alive && s.kind !== 'gate') solids.push([s.x, s.y, s.kind === 'totem' ? 16 : 15]);
+  // KAPILAR daire engel DEĞİLDİR: geçilebilirlikleri sur halkası/dikdörtgen mantığıyla ayrıca
+  // kararlaşır. Daire olarak da eklenince kapı, kendi boşluğunun tam ortasında bir kaya gibi
+  // duruyor ve dosta açık kapıdan geçmeye çalışan birimler kanadına takılıp yığılıyordu.
+  const KAPILAR = ['gate', 'gate2', 'gate3', 'lgate', 'owgate'];
+  for (const s of G.structures) if (s.alive && !KAPILAR.includes(s.kind)) solids.push([s.x, s.y, s.kind === 'totem' ? 16 : 15]);
   for (const [ox, oy, orr] of solids) {
     const d = dist(x, y, ox, oy), min = orr + r;
     // hafif açısal sapma (+0.09): tam hizada engele yürüyen birim kilitlenmesin, kenarından kaysın
@@ -5579,6 +5690,20 @@ function update(dt) {
     if (b.huntT >= 10) { b.huntT = 0; addStock('meat', b.lv >= 2 ? 2 : 1, b.x, b.y - 34, b.outpost); }
   }
 
+  // demirci ocağındaki pota: süresi dolan parti demire dönüşür ve ambara geri uçar
+  if (G.smelts && G.smelts.length) {
+    for (const sm of G.smelts) {
+      sm.t -= dt;
+      if (sm.t > 0) continue;
+      sm.bitti = true;
+      addStock('iron', sm.n, sm.x, sm.y - 38, sm.site === 'village' ? null : sm.site);
+      spawnParts(sm.x, sm.y - 20, 8, { colors: ['#ffb347', '#ff7a3d', '#ffe9a8'], v: 55, life: 0.6, g: -20 });
+      for (let i = 0; i < sm.n; i++)
+        G.flyItems.push({ x0: sm.x + rr(-8, 8), y0: sm.y - 30, x1: sm.ax + rr(-12, 12), y1: sm.ay - 42, t: 0, icon: '⚙️' });
+    }
+    G.smelts = G.smelts.filter(sm => !sm.bitti);
+  }
+
   // köylüler: işine yürür → çalışır → yükü eve taşır (baskında ateşe kaçar)
   const JOB_NODE = { wood: 'tree', stone: 'rock', scrap: 'scrap' };
   for (const b of G.buildings) {
@@ -6272,14 +6397,19 @@ function update(dt) {
         const dd = dist(g.x, g.y, pt[0], pt[1]);
         if (dd > 24) {
           g.dir = Math.atan2(pt[1] - g.y, pt[0] - g.x);
+          const rt = wallRoute(g.x, g.y, pt[0], pt[1], false); // sur içinden geçmeye çalışmasın
+          if (rt && rt.wx !== undefined) g.dir = Math.atan2(rt.wy - g.y, rt.wx - g.x);
           const [nx2, ny2] = collide(g.x + Math.cos(g.dir) * 72 * dt, g.y + Math.sin(g.dir) * 72 * dt, 12);
-          // takılma sigortası: ilerleyemiyorsa (bina kümesi vb.) sıradaki noktaya atla
-          g.patStuck = (dist(nx2, ny2, g.x, g.y) < 0.4) ? (g.patStuck || 0) + dt : 0;
+          // Takılma sigortası İLERLEMEYE bakar, harekete değil: bina çevresinde tur atan
+          // birim sürekli hareket ettiği için "duruyor mu" testine yakalanmıyordu.
+          if (g.patBest === undefined || dd < g.patBest - 3) { g.patBest = dd; g.patStuck = 0; }
+          else g.patStuck = (g.patStuck || 0) + dt;
           g.x = nx2; g.y = ny2; g.walk += dt * 6;
-          if (g.patStuck > 2) { g.patI += g.patDir; g.patStuck = 0; }
+          if (g.patStuck > 2) { g.patI += g.patDir; g.patStuck = 0; g.patBest = undefined; }
         } else {
           g.patI += g.patDir;
           g.patPause = rr(0.6, 2.2);
+          g.patBest = undefined; g.patStuck = 0;
         }
       }
       if (g.hp < g.maxHp) g.hp = Math.min(g.maxHp, g.hp + SOLDIER.regen * dt);
@@ -8069,6 +8199,7 @@ function startGame() {
   document.body.classList.remove('menuOpen');
   $('mainMenu').classList.add('hidden');
   audio();
+  dedupeUnique();      // eski kayıtlarda oluşmuş çift demirci/kışla vb. temizlenir
   lastT = performance.now();
   introBanners();
 }

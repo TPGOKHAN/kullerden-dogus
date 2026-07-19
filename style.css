@@ -62,8 +62,10 @@ canvas { display: block; position: fixed; inset: 0; touch-action: none; }
 
 /* Kuşam & Çanta (Archero tarzı) */
 .gearTabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.gearTab { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: #d8cfae; font-size: 12px; font-weight: 700; cursor: pointer; }
+.gearTab { position: relative; overflow: visible; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: #d8cfae; font-size: 12px; font-weight: 700; cursor: pointer; }
 .gearTab.on { background: rgba(240,185,61,.22); border-color: #c9a24a; color: #ffd97e; }
+/* Sekme rozeti: slottaki ❗ ile aynı dil, sekme köşesinde küçük hâli */
+.tabBadge { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ff6a55, #c22315); color: #fff; font-weight: 900; font-size: 11px; line-height: 16px; text-align: center; border: 2px solid rgba(255,255,255,.15); box-shadow: 0 2px 6px rgba(0,0,0,.6); animation: badgePulse 1.4s ease-in-out infinite; }
 .gearStats { text-align: center; font-size: 14px; font-weight: 800; color: #f3e6c8; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 6px; margin-bottom: 8px; }
 .gearSlots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 10px; }
 .gearSlot { border: 2px solid rgba(255,255,255,.18); border-radius: 10px; background: rgba(255,255,255,.05); padding: 5px 2px; text-align: center; cursor: pointer; min-height: 56px; }
