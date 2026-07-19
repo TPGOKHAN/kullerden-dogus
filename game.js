@@ -1169,7 +1169,80 @@ function wallRoute(x, y, tx, ty, isEnemy) {
     const w2 = dist(x, y, dis.wx, dis.wy) > 70 ? (orbitToGap(x, y, rg) || dis) : kapi(rg.r - 150);
     w2.ring = rg; w2.out = false; return w2;
   }
-  return rectRoute(x, y, tx, ty); // dairesel sur yoksa taş duvarları dolaş
+  const kr = keepGateRoute(x, y, tx, ty);                  // kale surunun kapısından geç
+  if (kr) return kr;
+  return boxRoute(x, y, tx, ty) || rectRoute(x, y, tx, ty); // kale kutusunu dolaş, olmazsa tek duvarı
+}
+// KALE SURLARININ KAPISINDAN GEÇİŞ. Dikdörtgen surlarda kapı mantığı hiç yoktu:
+// dış bantta devriye gezmesi gereken nöbetçi kaleden çıkamıyor, hep en içte
+// kalıyordu. Seçim tamamen MESAFEYE dayanır (kapı eksenine hizalı mıyım),
+// "içerideyim/dışarıdayım" testine değil — o test sur çizgisinde salınım üretir.
+function keepGateRings() {
+  const out = [];
+  for (const sid of KEEP_SITES) {
+    const B0 = sid === 'fort' ? FORT : LEG;
+    if (B0.x0 === undefined) continue;
+    const op = G.outposts[sid];
+    const lv = op && op.owned && !op.looted ? (op.lv || 1) : 1;
+    for (let k = 0; k < lv; k++) {
+      const pad = k * KEEP_PAD;
+      const b = { x0: B0.x0 - pad, y0: B0.y0 - pad, x1: B0.x1 + pad, y1: B0.y1 + pad };
+      out.push(sid === 'fort'
+        ? { b, gx: b.x0, gy: (FORT.gateY0 + FORT.gateY1) / 2, dikey: true }
+        : { b, gx: (LEG.gx0 + LEG.gx1) / 2, gy: b.y1, dikey: false });
+    }
+  }
+  return out;
+}
+function keepGateRoute(x, y, tx, ty) {
+  for (const rg of keepGateRings()) {
+    const b = rg.b;
+    const ins = (px, py) => px > b.x0 && px < b.x1 && py > b.y0 && py < b.y1;
+    const uIn = ins(x, y), tIn = ins(tx, ty);
+    if (uIn === tIn) continue;                 // aynı taraftalar: bu sur engel değil
+    // kapı ekseni: fort'ta yatay (y sabit), lejyonda dikey (x sabit)
+    const sapma = rg.dikey ? Math.abs(y - rg.gy) : Math.abs(x - rg.gx);
+    const D = 85;
+    const ic = rg.dikey ? { wx: rg.gx + D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy - D };
+    const dis = rg.dikey ? { wx: rg.gx - D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy + D };
+    if (sapma > 40) return uIn ? ic : dis;     // önce kapı eksenine hizalan
+    return uIn ? dis : ic;                     // hizalıyım: karşı tarafa geç
+  }
+  return null;
+}
+// Kale/lejyon SURLARININ TAMAMINI tek bir engel olarak dolaş.
+// rectRoute her duvar parçasını AYRI ele alıyor: bir segmentin köşesini dönen
+// birim hemen bir sonraki segmente tosluyor, koca bir dikdörtgen kaleyi asla
+// dolaşamıyordu ("köye devriyeye git dedik, buradan geçip gitmeye çalışıyor").
+function keepBoxes() {
+  const out = [];
+  for (const sid of KEEP_SITES) {
+    const B = sid === 'fort' ? FORT : LEG;
+    if (B.x0 === undefined) continue;
+    const op = G.outposts[sid];
+    const pad = op && op.owned ? Math.max(0, ((op.lv || 1) - 1)) * KEEP_PAD : 0;
+    out.push({ x0: B.x0 - pad, y0: B.y0 - pad, x1: B.x1 + pad, y1: B.y1 + pad });
+  }
+  return out;
+}
+function boxRoute(x, y, tx, ty) {
+  const PAD = 48;
+  for (const B of keepBoxes()) {
+    const r = { x: B.x0 - PAD, y: B.y0 - PAD, w: B.x1 - B.x0 + PAD * 2, h: B.y1 - B.y0 + PAD * 2 };
+    const ic = (px, py) => px > r.x && px < r.x + r.w && py > r.y && py < r.y + r.h;
+    if (ic(x, y) || ic(tx, ty)) continue;          // biri içerideyse kapıdan geçilir, bu iş rectRoute'un
+    if (!segHitsRect(x, y, tx, ty, r)) continue;
+    const D = 18;
+    const koseler = [[r.x - D, r.y - D], [r.x + r.w + D, r.y - D], [r.x + r.w + D, r.y + r.h + D], [r.x - D, r.y + r.h + D]];
+    let en = null, ed = 1e9;
+    for (const [kx, ky] of koseler) {
+      if (segHitsRect(x, y, kx, ky, r)) continue;  // köşeye giderken kutuyu kesmemeli
+      const d = dist(x, y, kx, ky) + dist(kx, ky, tx, ty);
+      if (d < ed) { ed = d; en = [kx, ky]; }
+    }
+    if (en) return { wx: en[0], wy: en[1] };
+  }
+  return null;
 }
 // ============ ORTAK YÜRÜYÜŞ: navMove ============
 // Birimlerin "duvara yapışma" ve "binanın etrafında sonsuz daire" sorunlarının
@@ -5681,6 +5754,7 @@ function keepBox(site, lv) {
 // Sahip olunan kalelerin dış sur halkalarını (seviyeye göre) yeniden kurar
 function rebuildKeepWalls() {
   G.walls = G.walls.filter(w => !w.keep);
+  G.keepGates = [];   // dış kale surlarının GÖRÜNÜR kapıları (çizim işareti)
   for (const sid of KEEP_SITES) {
     const op = G.outposts[sid];
     if (!op || !op.owned || op.looted || !OUTPOSTS[sid]) continue;
@@ -5703,6 +5777,10 @@ function rebuildKeepWalls() {
           { keep: true, x: LEG.gx1, y: B.y1 - T / 2, w: B.x1 + T / 2 - LEG.gx1, h: T },
         );
       }
+      // Açıklığa görünür kapı: çıplak boşluk "kapısı yok" gibi duruyordu.
+      G.keepGates.push(sid === 'fort'
+        ? { x: B.x0, y: (FORT.gateY0 + FORT.gateY1) / 2, dikey: true, boy: FORT.gateY1 - FORT.gateY0 }
+        : { x: (LEG.gx0 + LEG.gx1) / 2, y: B.y1, dikey: false, boy: LEG.gx1 - LEG.gx0 });
     }
     // yeni surun içinde kalan ağaç/taş kaldırılır (birimler takılmasın)
     const B2 = keepBox(sid, op.lv || 1);
@@ -7301,9 +7379,29 @@ function update(dt) {
   // garnizon askerleri: karakolu savunur, tehdit yoksa TESİSİN İÇİNDE DEVRİYE gezer
   G.garrisonUnits = G.garrisonUnits.filter(g => g.hp > 0);
   // tesise göre devriye rotası: kale/lejyon iç duvar dikdörtgeni, köy/kamp sur içi çember
-  function sitePatrolPoints(site) {
-    if (site === 'fort') return [[FORT.x0 + 95, FORT.y0 + 85], [FORT.x1 - 95, FORT.y0 + 85], [FORT.x1 - 95, FORT.y1 - 85], [FORT.x0 + 95, FORT.y1 - 85]];
-    if (site === 'legion') return [[LEG.x0 + 95, LEG.y0 + 75], [LEG.x1 - 95, LEG.y0 + 75], [LEG.x1 - 95, LEG.y1 - 75], [LEG.x0 + 95, LEG.y1 - 75]];
+  function sitePatrolPoints(site, g) {
+    // Taş kalelerde devriye HER SUR BANDINI dolaşır: dış kale eklendikçe
+    // aradaki bantlar bomboş kalıyordu, garnizon hep en içte tur atıyordu.
+    if (site === 'fort' || site === 'legion') {
+      // Her nöbetçi TEK bir sur bandında tur atar. Bantları tek bir rotada
+      // birleştirmek, birimi her adımda duvardan geçmeye zorluyordu: kapıya
+      // dolaşmak uzun sürüyor, navMove pes ediyor ve orta bant hep boş kalıyordu.
+      const B0 = site === 'fort' ? FORT : LEG;
+      const op = G.outposts[site], lv = (op && op.lv) || 1;
+      const halkalar = [];
+      for (let k = 0; k < lv; k++) {
+        const pad = k * KEEP_PAD;
+        const x0 = B0.x0 - pad + 95, x1 = B0.x1 + pad - 95;
+        const y0 = B0.y0 - pad + 85, y1 = B0.y1 + pad - 85;
+        if (x1 - x0 < 120 || y1 - y0 < 100) continue;
+        halkalar.push([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
+      }
+      if (!halkalar.length) return [[B0.x0 + 95, B0.y0 + 85], [B0.x1 - 95, B0.y1 - 85]];
+      if (g.patRing === undefined) {  // birime bir halka ata (bantlara eşit dağıl)
+        g.patRing = (G.garrisonUnits.filter(u => u.garrisonOf === site).indexOf(g) + halkalar.length) % halkalar.length;
+      }
+      return halkalar[g.patRing % halkalar.length];
+    }
     const isV = site === 'village';
     const cx = isV ? CAMPFIRE.x : OUTPOSTS[site].x, cy = isV ? CAMPFIRE.y : OUTPOSTS[site].y;
     const op = G.outposts[site];
@@ -7341,7 +7439,7 @@ function update(dt) {
       // devriye: rota noktaları arasında tur at, nokta başında kısa nöbet duruşu
       if ((g.patPause || 0) > 0) g.patPause -= dt;
       else {
-        const pts = sitePatrolPoints(g.garrisonOf);
+        const pts = sitePatrolPoints(g.garrisonOf, g);
         if (g.patI === undefined || g.patI >= pts.length * 4) { // en yakın noktadan başla
           let bi = 0, bdp = 1e9;
           pts.forEach((pt2, ix) => { const dp = dist(g.x, g.y, pt2[0], pt2[1]); if (dp < bdp) { bdp = dp; bi = ix; } });
@@ -8711,6 +8809,26 @@ function render() {
       else if (key === 'ballista') list.push({ y: en.y, f: () => { drawBallista(en); engBar(en, en.x, en.y); } });
       else list.push({ y: en.ry, f: () => { drawRam({ x: en.rx, y: en.ry, dir: en.dir, lunge: en.lunge }); engBar(en, en.rx, en.ry); } });
     }
+  }
+  // Dış kale surlarının kapıları: taş söve + demir kanat (dosta hep açık)
+  for (const kg of (G.keepGates || [])) {
+    if (!vis(kg.x, kg.y)) continue;
+    list.push({ y: kg.y, f: () => {
+      const yari = kg.boy / 2;
+      ctx.save(); ctx.translate(kg.x, kg.y);
+      if (!kg.dikey) ctx.rotate(Math.PI / 2);           // güney kapısı: yatay açıklık
+      ctx.fillStyle = '#8f8f95';                        // taş söveler
+      ctx.fillRect(-13, -yari - 16, 26, 18); ctx.fillRect(-13, yari - 2, 26, 18);
+      ctx.fillStyle = '#a8a8ad';
+      ctx.fillRect(-13, -yari - 16, 26, 6); ctx.fillRect(-13, yari - 2, 26, 6);
+      ctx.fillStyle = '#5a4530';                        // açık duran çift kanat
+      ctx.fillRect(-9, -yari, 7, yari - 4); ctx.fillRect(-9, 6, 7, yari - 4);
+      ctx.fillStyle = '#6d5a48';
+      ctx.fillRect(-9, -yari + 6, 7, 3); ctx.fillRect(-9, yari - 12, 7, 3);
+      ctx.strokeStyle = 'rgba(30,26,20,0.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(2, -yari); ctx.lineTo(2, yari); ctx.stroke();
+      ctx.restore();
+    } });
   }
   if (G.palisade.built) {
     for (const st of G.palStakes) if (vis(st.x, st.y)) list.push({ y: st.y, f: () => drawStake(st) });
