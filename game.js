@@ -2064,8 +2064,17 @@ function cmdIndepIdle(c, dt) {
     const site = c.order.slice(6), O = OUTPOSTS[site] || CAMPFIRE;
     const r = guardRadius(site);
     if (c.patA === undefined) c.patA = Math.atan2(c.y - O.y, c.x - O.x);
-    wx = O.x + Math.cos(c.patA) * r; wy = O.y + Math.sin(c.patA) * r;
-    if (dist(c.x, c.y, wx, wy) < 34) { c.patA += 0.32; return; } // halkada sıradaki noktaya
+    // Devriye noktası karada ve harita içinde olmalı: halkanın bir kısmı denize/kenara
+    // taşabiliyor, oraya varılamadığı için komutan sonsuza dek bekliyordu.
+    const karada = (px, py) => px > shoreX(py) + 45 && px > 60 && px < WORLD.w - 60 && py > 60 && py < WORLD.h - 60;
+    for (let dn = 0; dn < 20; dn++) {
+      wx = O.x + Math.cos(c.patA) * r; wy = O.y + Math.sin(c.patA) * r;
+      if (karada(wx, wy)) break;
+      c.patA += 0.32; c.patT = 0;
+    }
+    c.patT = (c.patT || 0) + dt;
+    // varıldı YA DA makul sürede varılamadı (engel) → sıradaki noktaya geç
+    if (dist(c.x, c.y, wx, wy) < 40 || c.patT > 14) { c.patA += 0.32; c.patT = 0; return; }
   } else if (c.order === 'raid') {
     if (c.raidPause > 0) { c.raidPause -= dt; return; }
     if (!c.wp || dist(c.x, c.y, c.wp[0], c.wp[1]) < 60) {
@@ -4475,6 +4484,7 @@ function collide(px, py, r, isEnemy) {
 
 // ---------- Prosedürel Mağara Koşusu ----------
 function clearCave() {
+  for (const c of G.commanders) { c.patA = undefined; c.patT = 0; c.wp = null; c.sideT = 0; } // görev hedefleri tazelensin
   G.walls = G.walls.filter(w => !w.cave);
   G.enemies = G.enemies.filter(e => e.camp !== 'cave');
   G.structures = G.structures.filter(s => !s.cave);
@@ -5489,9 +5499,15 @@ function update(dt) {
         const ox = b.vx, oy = b.vy;
         [b.vx, b.vy] = collide(b.vx + Math.cos(b.vdir) * sp * dt, b.vy + Math.sin(b.vdir) * sp * dt, 10);
         b.vwalk += dt * (sp > 100 ? 12 : 7);
-        b.vstuckT = dist(ox, oy, b.vx, b.vy) < sp * dt * 0.2 ? b.vstuckT + dt : 0;
+        // Takılma iki türlü olur: yerinde sayma VEYA hedefe hiç yaklaşamama.
+        // İkincisi bina etrafında sonsuz daire çizmektir — yerinde saymadığı için
+        // eski kontrol bunu göremiyordu.
+        if (b.vBestD === undefined || dd < b.vBestD - 2) { b.vBestD = dd; b.vstuckT = 0; }
+        else if (dist(ox, oy, b.vx, b.vy) < sp * dt * 0.2) b.vstuckT += dt * 2; // hem duruyor hem yaklaşamıyor
+        else b.vstuckT += dt;
         return false;
       }
+      b.vBestD = undefined;
       return true;
     };
     const scared = G.night && G.raidHappened;
@@ -5559,10 +5575,10 @@ function update(dt) {
       // hedef nokta kaynağın çarpışma halkasının DIŞINDA (takılmasın)
       b.vtx = best ? best.x + rr(-12, 12) : b.x + rr(-220, 260);
       b.vty = best ? best.y + rr(30, 42) : b.y + rr(-170, 210);
-      b.vstate = 'git'; b.workT = J.every * 0.5; b.vstuckT = 0;
+      b.vstate = 'git'; b.workT = J.every * 0.5; b.vstuckT = 0; b.vBestD = undefined;
     } else if (b.vstate === 'git') {
       if (walkTo(b.vtx, b.vty, 62)) b.vstate = 'calis';
-      else if (b.vstuckT > 2) { b.vstuckT = 0; b.vstate = null; b.vnode = null; } // yol tıkalı, başka iş bul
+      else if (b.vstuckT > 2) { b.vstuckT = 0; b.vBestD = undefined; b.vstate = null; b.vnode = null; } // yol tıkalı, başka iş bul
     } else if (b.vstate === 'calis') {
       b.workT -= dt;
       b.vdir = b.vnode ? Math.atan2(b.vnode.y - b.vy, b.vnode.x - b.vx) : b.vdir;
@@ -5972,7 +5988,13 @@ function update(dt) {
         const spd = dd > 300 ? SOLDIER.speed * 1.6 : SOLDIER.speed;
         const [nx2, ny2] = collide(s.x + Math.cos(ang) * spd * dt, s.y + Math.sin(ang) * spd * dt, 12);
         s.x = nx2; s.y = ny2; s.walk += dt * 10; s.dir = ang;
-      }
+        // bina etrafında dönüp duruyorsa (mesafe azalmıyorsa) safa geri çağır
+        if (s.bestD === undefined || dd < s.bestD - 3) { s.bestD = dd; s.stuckT = 0; }
+        else {
+          s.stuckT = (s.stuckT || 0) + dt;
+          if (s.stuckT > 2.5) { s.stuckT = 0; s.bestD = undefined; s.x = p.x + rr(-45, 45); s.y = p.y + rr(-45, 45); }
+        }
+      } else { s.bestD = undefined; s.stuckT = 0; }
       if (dd > 800) { s.x = p.x + rr(-30, 30); s.y = p.y + rr(-30, 30); }
       if (s.hp < s.maxHp) s.hp = Math.min(s.maxHp, s.hp + (s.tregen || SOLDIER.regen) * dt); // savaş dışı yenilenme
     }
@@ -5982,7 +6004,7 @@ function update(dt) {
   G.commanders = G.commanders.filter(c => c.hp > 0);
   G.commanders.forEach((c, i) => {
     const C = COMMANDERS[c.id];
-    const indep = cmdIndependent(c);
+    const indep = cmdIndependent(c) && !G.caveRun; // inde görev yok: herkes yanında dövüşür
     c.cd = Math.max(0, c.cd - dt); c.swing = Math.max(0, c.swing - dt); c.flash = Math.max(0, c.flash - dt);
     let best = null, bd;
     if (indep && c.order.indexOf('guard:') === 0) {
@@ -6028,7 +6050,12 @@ function update(dt) {
         const spd = dd > 300 ? C.speed * 1.6 : C.speed;
         const [nx2, ny2] = collide(c.x + Math.cos(ang) * spd * dt, c.y + Math.sin(ang) * spd * dt, 13);
         c.x = nx2; c.y = ny2; c.walk += dt * 10; c.dir = ang;
-      }
+        if (c.bestD === undefined || dd < c.bestD - 3) { c.bestD = dd; c.fStuck = 0; }
+        else {
+          c.fStuck = (c.fStuck || 0) + dt;
+          if (c.fStuck > 2.5) { c.fStuck = 0; c.bestD = undefined; c.x = p.x + rr(-45, 45); c.y = p.y + rr(-45, 45); }
+        }
+      } else { c.bestD = undefined; c.fStuck = 0; }
       if (dd > 800) { c.x = p.x + rr(-30, 30); c.y = p.y + rr(-30, 30); }
       if (c.hp < c.maxHp) c.hp = Math.min(c.maxHp, c.hp + SOLDIER.regen * 1.5 * dt);
     }
