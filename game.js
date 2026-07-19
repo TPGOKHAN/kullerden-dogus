@@ -3807,11 +3807,12 @@ function renderPanel() {
     pitem('🌞 İnden çık', 'Girdiğin yere dönersin', null, 'Çık', true, () => { closePanel(); leaveCave(true); });
   } else if (th.trade) {
     elPanelTitle.textContent = '🐪 Göçebe Tüccar';
-    elPanelBody.innerHTML = '<div class="pdesc" style="margin-bottom:8px">"Hoş geldin savaşçı! Çölün en iyi fiyatları bende."</div>';
+    elPanelBody.innerHTML = '<div class="pdesc" style="margin-bottom:8px">"Hoş geldin savaşçı! Çölün en iyi fiyatları bende."'
+      + '<br><b style="color:#ffd97e">👆 Takas düğmesini BASILI TUT</b> — art arda takas eder, bırakınca durur.</div>';
     // Takas butonu BASILI TUTULUNCA hızlıca birer birer devam eder (75 hurdayı
     // 15 kez tıklamak yerine parmağını basılı tut).
     const deal = (name, desc, check, apply) => {
-      pitem(name, desc, null, 'Takas', check(), () => { apply(); SFX.coin(); });
+      pitem(name, desc + ' · 👆 basılı tut = seri', null, 'Takas', check(), () => { apply(); SFX.coin(); });
       const btn = elPanelBody.lastElementChild && elPanelBody.lastElementChild.querySelector('button');
       if (!btn) return;
       let tekrar = null, ilk = null;
@@ -8308,10 +8309,29 @@ function drawVillageGate() {
       ctx.fillStyle = '#e8a13d'; ctx.fillRect(x - bw / 2 + 1, y - 69, (bw - 2) * Math.max(0, g.hp / g.maxHp), 3);
     }
   } else {
-    ctx.fillStyle = '#6a5138';
+    // KIRIK KAPI: eskiden yalnız iki küçük çubuk kalıyordu, taş surda gri
+    // direklerle birleşip "kapı yokmuş" gibi duruyordu. Artık menteşelerde
+    // parçalanmış kanat kalıntısı + açıklığa savrulmuş kalaslar + uyarı var.
     ctx.save(); ctx.translate(x, y);
-    ctx.rotate(0.5); ctx.fillRect(-4, -20, 8, 26); ctx.rotate(-1.1); ctx.fillRect(-3, 6, 7, 22);
+    // menteşelerde kalan kırık kanat parçaları (üstte ve altta)
+    ctx.fillStyle = stone ? '#5a4530' : '#6a4526';
+    ctx.beginPath(); ctx.moveTo(-6, -42); ctx.lineTo(6, -42); ctx.lineTo(4, -22); ctx.lineTo(-5, -28); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-6, 42); ctx.lineTo(6, 42); ctx.lineTo(5, 24); ctx.lineTo(-4, 30); ctx.closePath(); ctx.fill();
+    // kopmuş demir menteşeler
+    ctx.fillStyle = stone ? '#8b8f98' : '#54402c';
+    ctx.fillRect(-7, -34, 14, 4); ctx.fillRect(-7, 30, 14, 4);
+    // yere savrulmuş kalaslar (açıklığın içinde)
+    ctx.fillStyle = 'rgba(92,66,38,0.75)';
+    ctx.save(); ctx.rotate(0.42); ctx.fillRect(-22, -6, 44, 8); ctx.restore();
+    ctx.save(); ctx.rotate(-0.75); ctx.fillRect(-16, 8, 34, 7); ctx.restore();
+    ctx.fillStyle = 'rgba(60,42,24,0.6)';
+    ctx.save(); ctx.rotate(1.3); ctx.fillRect(-10, 14, 22, 5); ctx.restore();
+    // kıymık tozu
+    ctx.fillStyle = 'rgba(120,92,58,0.5)';
+    for (let i = -2; i <= 2; i++) ctx.fillRect(i * 11 - 2, 18 + (i % 2) * 5, 5, 3);
     ctx.restore();
+    ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🚨', x, y - 72 + Math.sin(G.t * 3) * 2);
   }
 }
 function drawRam(rm) {
