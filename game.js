@@ -1203,20 +1203,28 @@ function keepGateRings() {
   return out;
 }
 function keepGateRoute(x, y, tx, ty) {
+  // Dizideki İLK ayıran sur seçilemez: halkalar içten dışa sıralı olduğu için
+  // dışarıdan gelen birim EN İÇTEKİ kapıya yöneliyor, aradaki dış surlara
+  // tosluyordu (kervan "Taş Kale" yazısıyla duvarda asılı kalıyordu).
+  // Doğrusu: hâlâ AYIRAN halkalar arasından KAPISI EN YAKIN olanı seçmek —
+  // geçilen halka artık ayırmadığı için elenir, sıra kendiliğinden ilerler.
+  let en = null, ed = 1e9;
   for (const rg of keepGateRings()) {
     const b = rg.b;
     const ins = (px, py) => px > b.x0 && px < b.x1 && py > b.y0 && py < b.y1;
-    const uIn = ins(x, y), tIn = ins(tx, ty);
-    if (uIn === tIn) continue;                 // aynı taraftalar: bu sur engel değil
-    // kapı ekseni: fort'ta yatay (y sabit), lejyonda dikey (x sabit)
-    const sapma = rg.dikey ? Math.abs(y - rg.gy) : Math.abs(x - rg.gx);
-    const D = 85;
-    const ic = rg.dikey ? { wx: rg.gx + D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy - D };
-    const dis = rg.dikey ? { wx: rg.gx - D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy + D };
-    if (sapma > 40) return uIn ? ic : dis;     // önce kapı eksenine hizalan
-    return uIn ? dis : ic;                     // hizalıyım: karşı tarafa geç
+    if (ins(x, y) === ins(tx, ty)) continue;   // aynı taraftalar: bu sur engel değil
+    const d = dist(x, y, rg.gx, rg.gy);
+    if (d < ed) { ed = d; en = { rg, uIn: ins(x, y) }; }
   }
-  return null;
+  if (!en) return null;
+  const rg = en.rg;
+  // kapı ekseni: fort'ta yatay (y sabit), lejyonda dikey (x sabit)
+  const sapma = rg.dikey ? Math.abs(y - rg.gy) : Math.abs(x - rg.gx);
+  const D = 85;
+  const ic = rg.dikey ? { wx: rg.gx + D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy - D };
+  const dis = rg.dikey ? { wx: rg.gx - D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy + D };
+  if (sapma > 40) return en.uIn ? ic : dis;    // önce kapı eksenine hizalan
+  return en.uIn ? dis : ic;                    // hizalıyım: karşı tarafa geç
 }
 // Kale/lejyon SURLARININ TAMAMINI tek bir engel olarak dolaş.
 // rectRoute her duvar parçasını AYRI ele alıyor: bir segmentin köşesini dönen
