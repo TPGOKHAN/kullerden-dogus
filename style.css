@@ -85,6 +85,7 @@ canvas { display: block; position: fixed; inset: 0; touch-action: none; }
 .gearFTab.on { background: rgba(240,185,61,.22); border-color: #c9a24a; color: #ffd97e; }
 .gearFoot { margin-top: 8px; text-align: center; display: flex; gap: 8px; justify-content: center; }
 .gearAutoBtn { display: inline-block; width: auto; padding: 6px 16px; background: linear-gradient(180deg, #f0b93d, #c8821e); color: #3a2604; border-color: #8a5c10; font-weight: 800; }
+.gearSalvAllBtn { display: inline-block; width: auto; padding: 6px 12px; background: linear-gradient(180deg, #b8452f, #7d2a19); color: #ffe2d6; border-color: #6a2312; font-weight: 800; }
 
 /* Köy Deposu satırları */
 .stockRow { display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 8px 11px; margin-bottom: 7px; }
@@ -192,6 +193,9 @@ body.menuOpen #btnDodge, body.menuOpen #btnInteract, body.menuOpen #joy, body.me
 #btnInfil:disabled { filter: grayscale(.7) brightness(.75); font-size: 17px; cursor: default; animation: none; }
 #btnInfil:active:not(:disabled) { transform: scale(.93); }
 @keyframes infilpulse { 0%,100% { box-shadow: 0 4px 16px rgba(120,60,200,.45); } 50% { box-shadow: 0 4px 26px rgba(160,90,240,.85); } }
+/* içeride kurtarılacak yoldaş varsa buton kızıla döner ve daha hızlı atar */
+#btnInfil.rescue { border-color: rgba(255,140,90,.8); background: radial-gradient(circle at 35% 30%, rgba(150,50,40,.95), rgba(80,22,18,.95)); color: #ffe0d2; animation: rescuepulse 1s ease-in-out infinite; }
+@keyframes rescuepulse { 0%,100% { box-shadow: 0 4px 16px rgba(220,80,50,.5); } 50% { box-shadow: 0 4px 30px rgba(255,120,70,.95); } }
 /* sızma sırasında diğer kontroller gizli (saldırı butonu = durdur tuşu olarak kalır) */
 body.infil #btnDodge, body.infil #btnInteract, body.infil #btnMap, body.infil #btnMute,
 body.infil #btnBag, body.infil #btnInfil, body.infil #joy, body.infil #panel,

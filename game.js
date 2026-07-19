@@ -2307,6 +2307,24 @@ function autoSat(s, fazla, cap) {
   toast('🐪 Satış kervanı: ' + siteName(s.id).replace(' Karakolu', '') + ' → Göçebe Tüccar (' + yuk + icon + ' → ' + kazanc + '🪙)');
   save();
 }
+// Her yerleşke kendi kendini besler: bir köylü/garnizon kendi üssünün ambarından yer,
+// başka yerleşkenin ambarıyla işi olmaz. (Köy ayrıca oyuncunun cebinden de yiyebilir.)
+const siteStock = sid => (!sid || sid === 'village') ? G.stock : ((G.outposts[sid] && G.outposts[sid].stock) || {});
+function siteEat(sid, n) {                       // n adet et tüket, yiyebildiğini döndür
+  const st = siteStock(sid);
+  let yendi = Math.min(n, Math.floor(st.meat || 0));
+  st.meat = (st.meat || 0) - yendi;
+  if (ISLAND && (!sid || sid === 'village') && yendi > 0) {
+    const sa = G.islOps.stockAdd = G.islOps.stockAdd || {}; sa.meat = (sa.meat || 0) - yendi;
+  }
+  if (yendi < n && (!sid || sid === 'village')) { // köyde cep de sayılır
+    const cep = Math.min(n - yendi, Math.floor(G.res.meat || 0));
+    G.res.meat -= cep; yendi += cep;
+  }
+  return yendi;
+}
+const siteAc = sid => siteEat(sid, 0) === 0 && Math.floor(siteStock(sid).meat || 0) <= 0
+  && ((sid && sid !== 'village') || Math.floor(G.res.meat || 0) <= 0);
 // Yeni köylüye meslek: üste EN AZ bulunan iş verilir (hepsi oduncu olmasın).
 // Eşitlikte sözlük sırası (odun → taş → hurda) korunur, böylece ilk köylü hep oduncudur.
 // Bir üste ikinci kez kurulmasının anlamı olmayan binalar (üretim yapmaz, sadece kilit açar).
@@ -2707,8 +2725,11 @@ function updateHUD() {
   elInf.classList.toggle('hidden', !stI || !!G.infil);
   if (stI) {
     const cd = Math.ceil(G.infilCd || 0);
-    const label = cd > 0 ? cd + 's' : '🥷';
+    // içeride yoldaş varsa buton kurtarma moduna geçer (zincir ikonu + nabız)
+    const esirVar = !!infilPrisoner(stI.id);
+    const label = cd > 0 ? cd + 's' : (esirVar ? '⛓️' : '🥷');
     if (elInf.textContent !== label) elInf.textContent = label;
+    elInf.classList.toggle('rescue', esirVar && cd <= 0);
     elInf.disabled = cd > 0;
   }
 }
@@ -2792,7 +2813,8 @@ function renderPanel() {
       html += '<button class="gearFTab' + (gf === sk2 ? ' on' : '') + '" data-f="' + sk2 + '">' + sname2.split(' ')[0] + '</button>';
     html += '<span style="flex:1"></span>' +
       '<button id="gearAuto" class="gearFTab gearAutoBtn">⚡ Otomatik Giy</button>' +
-      '<button id="gearSalv" class="gearFTab' + (G.gearSalvage ? ' on' : '') + '">🔥 Erit</button>';
+      '<button id="gearSalv" class="gearFTab' + (G.gearSalvage ? ' on' : '') + '">🔥 Erit</button>' +
+      '<button id="gearSalvAll" class="gearFTab gearSalvAllBtn">🔥 Hepsini Erit</button>';
     html += '</div>';
     html += '<div class="gearGrid">';
     const order = G.bag.map((it, i) => i)
@@ -2841,6 +2863,29 @@ function renderPanel() {
     }));
     const sb = document.getElementById('gearSalv');
     if (sb) sb.addEventListener('click', () => { G.gearSalvage = !G.gearSalvage; renderPanel(); });
+    // 🔥 Hepsini Erit: görünen listedeki (filtreye tabi) her şeyi tek seferde eritir.
+    // Onayda kaç parçanın KUŞANILANDAN İYİ olduğu ayrıca uyarılır — 75 eşyalık
+    // çantada tek tek bakmak imkânsız, yanlışlıkla iyi parçayı yakmak can sıkıcı.
+    const sab = document.getElementById('gearSalvAll');
+    if (sab) sab.addEventListener('click', () => {
+      const idx = G.bag.map((it, i2) => i2).filter(i2 => gf === 'all' || GEAR_BASES[G.bag[i2].b].slot === gf);
+      if (!idx.length) { toast('Eritilecek eşya yok'); return; }
+      const kadrolar = [G.equip].concat(G.commanders.map(cc => cc.gear || {}));
+      let altin = 0, hurda = 0, iyi = 0;
+      for (const i2 of idx) {
+        const it = G.bag[i2];
+        altin += Math.round(8 * RARITY[it.r].m);
+        hurda += Math.max(1, Math.round(RARITY[it.r].m));
+        const sk2 = GEAR_BASES[it.b].slot;
+        if (kadrolar.some(eq2 => gearScore(it) > (eq2[sk2] ? gearScore(eq2[sk2]) : -1))) iyi++;
+      }
+      const uyari = iyi ? '\n\n⚠️ Bunlardan ' + iyi + ' tanesi birinin kuşandığından DAHA İYİ!' : '';
+      if (!confirm(idx.length + ' parça eritilsin mi?\nKazanç: ' + altin + ' 🪙 + ' + hurda + ' 🔩' + uyari)) return;
+      for (const i2 of idx.sort((a2, b2) => b2 - a2)) G.bag.splice(i2, 1);  // sondan başa: indeksler kaymasın
+      gain({ gold: altin, scrap: hurda }, G.player.x, G.player.y - 30);
+      SFX.build(); toast('🔥 ' + idx.length + ' parça eritildi: +' + altin + '🪙 +' + hurda + '🔩');
+      save(); renderPanel();
+    });
     return;
   }
   if (th.armyPage) { // 🎖️ Ordu: askerler (rütbe/terfi) + komutan görevleri + garnizonlar
@@ -5237,39 +5282,87 @@ const INFIL_STAGES = [
   { t: '🕶️ Nöbetçiyi atlat', spd: 3.5, half: 0.30 },
   { t: '🔥 Sabotaj!', spd: 4.6, half: 0.19 },
 ];
-// kuşatma aktif mi: yakındaki fethedilmemiş kuşatma kampında en az bir silah/şantiye var
+// Sızılabilecek yer: yakındaki fethedilmemiş düşman yuvası.
+// KUŞATMA ŞARTI KALKTI — casusluk artık kuşatmadan bağımsız bir yol; kuşatma
+// kurmadan da esir kurtarmaya ya da nöbetçi avlamaya gidebilirsin.
+const INFIL_SITES = () => ([
+  ...SIEGE_SITES,
+  { id: 'camp1', name: 'Barbar Kampı', x: CAMP1.x, y: CAMP1.y + 190, gateKind: null },
+]);
 function nearSiegeSite() {
-  for (const st of SIEGE_SITES) {
+  let en = null, ed = 700;
+  for (const st of INFIL_SITES()) {
     if (G.outposts[st.id]) continue;
-    if (!Object.keys(G.sieges[st.id]).length) continue;
-    if (dist(G.player.x, G.player.y, st.x, st.y) < 650) return st;
+    if (st.id === 'camp1' && G.camp1Destroyed) continue;
+    const d = dist(G.player.x, G.player.y, st.x, st.y);
+    if (d < ed) { ed = d; en = st; }
   }
-  return null;
+  return en;
 }
+// Bu yuvada bizim esirimiz var mı? (birden fazlaysa her sızmada BİRİ kurtulur)
+const infilPrisoner = sid => ((G.prisoners && G.prisoners[sid]) || []).find(m => m.cmd || m.cls) || null;
 function startInfil(st) {
   closePanel(); toggleMap(false);
-  G.infil = { site: st.id, stage: 0, ang: rr(0, TAU), start: 0, success: 0, gC: rr(0, TAU), flash: 0 };
+  const esir = infilPrisoner(st.id);
+  G.infil = {
+    site: st.id, stage: 0, ang: rr(0, TAU), start: 0, success: 0, gC: rr(0, TAU), flash: 0,
+    gorev: esir ? 'kurtar' : 'sabotaj',   // esir varsa öncelik kurtarma
+  };
   G.infil.start = G.infil.ang;
   document.body.classList.add('infil');
+  SFX.horn();
+  toast(esir ? '🥷 İçeride yoldaşın var — zincirlerini kır!' : '🥷 Sızma: nöbetçileri indir, sonra kapıyı sabote et');
+}
+// 2. aşamadan sonrası göreve göre dallanır
+function infilPhase2(f) {
+  if (f.gorev === 'kurtar') {   // ZİNCİR KIRMA: yoldaşın bileklerindeki halkaları vur
+    f.phase = 'chain'; f.bowT = 0; f.arrows = 6; f.kirik = 0;
+    f.zincir = Array.from({ length: 3 }, (_, i2) => ({ o: -52 + i2 * 52, alive: true }));
+  } else {                      // OK YAĞMURU: surdaki nöbetçileri indir
+    f.phase = 'bow'; f.bowT = 0; f.arrows = 5; f.kills = 0;
+    f.targets = Array.from({ length: 5 }, (_, i2) => ({ o: -168 + i2 * 84 + rr(-12, 12), alive: true }));
+  }
   SFX.horn();
 }
 function infilTap() {
   const f = G.infil;
   if (!f) return;
-  if (f.phase === 'bow') { bowShoot(); return; }
+  if (f.phase === 'bow' || f.phase === 'chain') { bowShoot(); return; }
+  if (f.phase === 'gate') { gateStrike(); return; }
   const ST = INFIL_STAGES[f.stage];
   let da = Math.abs(((f.ang - f.gC) % TAU + TAU) % TAU); if (da > Math.PI) da = TAU - da;
   if (da <= ST.half) { // yeşilde durdurdu
     f.success++;
     tone(660 + f.stage * 160, 0.18, 'triangle', 0.12, 60);
-    if (f.stage >= INFIL_STAGES.length - 1) { // içeri sızdın → OK YAĞMURU: surdaki nöbetçileri indir
-      f.phase = 'bow'; f.bowT = 0; f.arrows = 5; f.kills = 0;
-      f.targets = Array.from({ length: 5 }, (_, i2) => ({ o: -168 + i2 * 84 + rr(-12, 12), alive: true }));
-      SFX.horn();
-      return;
-    }
+    if (f.stage >= INFIL_STAGES.length - 1) { infilPhase2(f); return; }
     f.stage++; f.gC = rr(0, TAU); f.ang = f.gC + Math.PI; f.start = f.ang; f.flash = 0.25;
   } else finishInfil(false); // kaçırdı: yakalandı
+}
+// 3. AŞAMA — KAPI SABOTAJI: barut fıçısını kapının dibine koyup tokmakla çak.
+// Kapı ancak burada başarı gösterirsen hasar alır (eskiden otomatik -%15 veriyordu).
+const GATE_STRIKES = 3;
+function gateBarPos(f) {   // sürgü çubuğundaki tokmağın 0..1 konumu (ileri-geri gider)
+  const per = 1.9 - f.vurus * 0.35;
+  const t = (f.gateT % per) / per;
+  return t < 0.5 ? t * 2 : 2 - t * 2;
+}
+function gateStrike() {
+  const f = G.infil;
+  if (!f || f.bitti) return;
+  const p2 = gateBarPos(f);
+  const yari = 0.13 - f.vurus * 0.028;                 // hedef bandı her vuruşta daralır
+  const isabet = Math.abs(p2 - f.hedef) <= yari;
+  f.vurusFx = { t: 0.3, hit: isabet, p: p2 };
+  if (isabet) {
+    f.vurus++; f.hasar += 0.09;                        // her isabet kapının %9'u
+    tone(220, 0.22, 'square', 0.14, -60); SFX.build();
+    if (f.vurus >= GATE_STRIKES) { f.bitti = true; setTimeout(() => finishInfil(true), 340); return; }
+    f.hedef = rr(0.18, 0.82);
+  } else {
+    tone(120, 0.3, 'sawtooth', 0.1, -50);
+    f.bitti = true;                                    // gürültü yaptın: kaç!
+    setTimeout(() => finishInfil(true, 'gurultu'), 340);
+  }
 }
 // Ok Yağmuru: sallanan nişangahı nöbetçinin üstünde durdur
 function bowCrossPos(f) {
@@ -5279,25 +5372,43 @@ function bowCrossPos(f) {
 function bowShoot() {
   const f = G.infil;
   if (!f || f.arrows <= 0) return;
+  const zincirMi = f.phase === 'chain';
+  const liste = zincirMi ? f.zincir : f.targets;
+  const genis = zincirMi ? 17 : 26;      // zincir halkası daha küçük hedef
   f.arrows--;
   const [mx] = bowCrossPos(f);
   const cx2 = VW / 2;
   let hit = null;
-  for (const t2 of f.targets) {
+  for (const t2 of liste) {
     if (!t2.alive) continue;
-    if (Math.abs(mx - (cx2 + t2.o)) < 26) { hit = t2; break; }
+    if (Math.abs(mx - (cx2 + t2.o)) < genis) { hit = t2; break; }
   }
   if (hit) {
-    hit.alive = false; f.kills++;
-    tone(740, 0.15, 'triangle', 0.12, 70); SFX.arrow();
+    hit.alive = false;
+    if (zincirMi) { f.kirik++; tone(880, 0.18, 'square', 0.12, 120); }
+    else { f.kills++; tone(740, 0.15, 'triangle', 0.12, 70); }
+    SFX.arrow();
   } else { tone(160, 0.2, 'sawtooth', 0.08, -40); }
   f.shotFx = { t: 0.3, hit: !!hit };
-  if (f.arrows <= 0 || f.targets.every(t2 => !t2.alive)) finishInfil(true);
+  const bitti = liste.every(t2 => !t2.alive);
+  if (zincirMi) {
+    // Zincirler koptu → yoldaş serbest, sessizce çık (kapıyla işimiz yok)
+    if (bitti || f.arrows <= 0) setTimeout(() => finishInfil(true), 300);
+    return;
+  }
+  // Nöbetçiler temizlendi YA DA ok bitti → 3. AŞAMA: kapı sabotajı
+  if (bitti || f.arrows <= 0) {
+    const st2 = INFIL_SITES().find(s2 => s2.id === f.site);
+    const gate2 = st2 && st2.gateKind && G.structures.find(s2 => s2.kind === st2.gateKind && s2.alive);
+    if (!gate2) { setTimeout(() => finishInfil(true), 300); return; }   // kapısı yok/kırık: iş bitti
+    f.phase = 'gate'; f.gateT = 0; f.vurus = 0; f.hasar = 0; f.hedef = rr(0.2, 0.8); f.bitti = false;
+    SFX.horn();
+  }
 }
-function finishInfil(ok) {
+function finishInfil(ok, sebep) {
   const f = G.infil;
   if (!f) return; // zaten bitti (çift çağrı güvencesi)
-  const st = SIEGE_SITES.find(s2 => s2.id === f.site);
+  const st = INFIL_SITES().find(s2 => s2.id === f.site);
   G.infil = null; G.infilCd = 60;
   document.body.classList.remove('infil');
   if (!ok || !st) { // yakalandın: alarm! kazanımlar da gitti
@@ -5307,21 +5418,59 @@ function finishInfil(ok) {
     if (st) sortie(st);
     SFX.no(); save(); return;
   }
-  // 3/3 başarı: büyük sabotaj
   const gains = [];
-  const loot = 40 + G.region * 25;
+  const loot = Math.round((f.gorev === 'kurtar' ? 15 : 40) + G.region * 25);
   gain({ gold: loot }, G.player.x, G.player.y - 30); gains.push(loot + '🪙 ganimet');
-  const gate = G.structures.find(s2 => s2.kind === st.gateKind && s2.alive);
-  if (gate) { damageStructure(gate, Math.round(gate.maxHp * 0.15)); gains.push('kapıya sabotaj (-%15)'); }
+  // --- KURTARMA GÖREVİ: zincirleri kırdıysan yoldaşın serbest (her sızmada BİRİ) ---
+  if (f.gorev === 'kurtar') {
+    const koptu = (f.zincir || []).every(z => !z.alive);
+    if (koptu) {
+      const liste = G.prisoners[f.site] || [];
+      const i3 = liste.findIndex(m => m.cmd || m.cls);
+      const m3 = i3 >= 0 ? liste.splice(i3, 1)[0] : null;
+      if (m3 && m3.cmd && COMMANDERS[m3.cmd]) {
+        addCommander(m3.cmd, { lv: m3.lv || 1, kills: m3.kills || 0, gear: m3.gear, hpFrac: 0.25,
+          x: G.player.x + rr(-40, 40), y: G.player.y + rr(30, 60) });
+        const yeni = G.commanders[G.commanders.length - 1];
+        yeni.recovering = true; yeni.order = 'follow';   // iyileşene dek savaşmaz, peşinde dolanır
+        banner('⛓️ ZİNCİRLER KIRILDI!');
+        gains.push('🔓 ' + COMMANDERS[m3.cmd].name + ' kurtarıldı (yaralı — iyileşene dek dövüşmez)');
+      } else if (m3 && m3.cls) {
+        G.soldiersOwned++; addSoldier(m3.cls);
+        const sl = G.soldiers[G.soldiers.length - 1];
+        sl.x = G.player.x + rr(-40, 40); sl.y = G.player.y + rr(30, 60); sl.hp = Math.round(sl.maxHp * 0.3);
+        banner('⛓️ ZİNCİRLER KIRILDI!');
+        gains.push('🔓 Esir asker kurtarıldı');
+      }
+      const kalan = (G.prisoners[f.site] || []).filter(m => m.cmd || m.cls).length;
+      if (kalan) gains.push('⚠️ zindanda ' + kalan + ' yoldaş daha var — tekrar sız');
+    } else {
+      gains.push('⛓️ zincirler kopmadı (' + (f.kirik || 0) + '/3) — yoldaşın içeride kaldı');
+    }
+    // kurtarma koşusunda kapıya dokunulmaz
+    toast('🥷 ' + gains.join(' · '), false);
+    banner(koptu ? '⛓️ ZİNCİRLER KIRILDI!' : '🥷 SIZMA BİTTİ');
+    addXp(koptu ? 90 : 30, G.player.x, G.player.y - 40);
+    SFX.upgrade(); save(); return;
+  }
+  // --- SABOTAJ GÖREVİ ---
   const defs = G.enemies.filter(e2 => e2.camp === st.id && e2.type !== 'chief' && e2.type !== 'commander');
   if (defs.length) { const v = defs[ri(0, defs.length - 1)]; damageEnemy(v, v.hp + 999, v.x, v.y); gains.push('1 nöbetçi sessizce indirildi'); }
-  for (const [k2, en] of Object.entries(G.sieges[st.id]))
+  for (const [k2, en] of Object.entries(G.sieges[st.id] || {}))
     if (!en.done) { en.prog = Math.min(ENGINES[k2].buildTime, en.prog + ENGINES[k2].buildTime * 0.12); gains.push('inşaat +%12'); }
   const bowKills = f.kills || 0;
   if (bowKills > 0) { // okla indirilenler gerçekten ölür
     const defs2 = G.enemies.filter(e2 => e2.camp === st.id && e2.type !== 'chief' && e2.type !== 'commander');
     for (let i2 = 0; i2 < Math.min(bowKills, defs2.length); i2++) damageEnemy(defs2[i2], defs2[i2].hp + 999, defs2[i2].x, defs2[i2].y);
     gains.push('🏹 ' + bowKills + ' nöbetçi okla indirildi');
+  }
+  // KAPI: artık otomatik hasar YOK — sadece barut sabotajında çakabildiğin kadar
+  const gate = st.gateKind && G.structures.find(s2 => s2.kind === st.gateKind && s2.alive);
+  if (gate && (f.hasar || 0) > 0) {
+    damageStructure(gate, Math.round(gate.maxHp * f.hasar));
+    gains.push('💥 kapıya barut sabotajı (-%' + Math.round(f.hasar * 100) + ')');
+  } else if (gate) {
+    gains.push(sebep === 'gurultu' ? '💥 tokmak ıskaladı — kapıya zarar veremedin' : 'kapıya ulaşılamadı');
   }
   banner('🥷 SIZMA BAŞARILI!');
   toast('🥷 ' + gains.join(' · '), false);
@@ -5416,15 +5565,28 @@ function endNight() {
     if (fled > 0) toast(fled + ' baskıncı şafakla kaçtı');
   }
   G.raidHappened = false; G.duskWarned = false; G.day++;
-  // 🍖 günlük tayın: her asker (ordu+garnizon+komutan) 1 et yer — önce depo, sonra cep
-  const dTroops = G.soldiers.length + G.garrisonUnits.length + G.commanders.length;
-  if (dTroops > 0) {
-    let need = dTroops, eaten = 0;
-    const fromStock = Math.min(need, Math.floor(G.stock.meat)); G.stock.meat -= fromStock; need -= fromStock; eaten += fromStock;
-    if (ISLAND && fromStock > 0) { const sa = G.islOps.stockAdd = G.islOps.stockAdd || {}; sa.meat = (sa.meat || 0) - fromStock; }
-    const fromPocket = Math.min(need, Math.floor(G.res.meat)); G.res.meat -= fromPocket; need -= fromPocket; eaten += fromPocket;
-    if (need > 0) dayReport('🍖 ET YETMEDİ! ' + eaten + '/' + dTroops + ' asker yiyebildi — avlan ya da avcı kulübesi kur!', true);
-    else dayReport('🍖 ' + dTroops + ' asker ' + eaten + ' et yedi (depo: ' + Math.floor(G.stock.meat) + ')', false);
+  // 🍖 günlük tayın: HER GARNİZON KENDİ KALESİNDEN yer (başka yerleşkenin ambarına
+  // el atmaz); sahadaki ordu ve komutanlar oyuncuyla birlikte köyün tayınından yer.
+  {
+    const garNerede = {};
+    for (const g2 of G.garrisonUnits) garNerede[g2.garrisonOf] = (garNerede[g2.garrisonOf] || 0) + 1;
+    let acKalan = 0, toplam = 0, yenen = 0;
+    for (const [sid, n] of Object.entries(garNerede)) {
+      if (sid === 'village') continue;                       // köy garnizonu aşağıdaki tayına dahil
+      const y = siteEat(sid, n);
+      toplam += n; yenen += y;
+      if (y < n) { acKalan += n - y; dayReport('🍖 ' + siteName(sid).replace(' Karakolu', '') + ' garnizonu aç kaldı (' + y + '/' + n + ') — oraya et gönder!', true); }
+    }
+    const sahada = G.soldiers.length + G.commanders.length + (garNerede.village || 0);
+    if (sahada > 0) {
+      const y = siteEat('village', sahada);
+      toplam += sahada; yenen += y;
+      if (y < sahada) acKalan += sahada - y;
+    }
+    if (toplam > 0) {
+      if (acKalan > 0) dayReport('🍖 ET YETMEDİ! ' + yenen + '/' + toplam + ' asker yiyebildi — avlan ya da avcı kulübesi kur!', true);
+      else dayReport('🍖 ' + toplam + ' asker ' + yenen + ' et yedi (köy deposu: ' + Math.floor(G.stock.meat) + ')', false);
+    }
   }
   // karakol vergileri: artık kervanlar taşır — köye ulaşırsa altın senin (koru!)
   for (const [id, o] of Object.entries(G.outposts)) {
@@ -5526,10 +5688,16 @@ function update(dt) {
   // sızma mini oyunu: dünya donar, sadece ibre döner
   if (G.infil) {
     const f = G.infil;
-    if (f.phase === 'bow') {
+    if (f.phase === 'bow' || f.phase === 'chain') {
       f.bowT = (f.bowT || 0) + dt;
       if (f.shotFx) { f.shotFx.t -= dt; if (f.shotFx.t <= 0) f.shotFx = null; }
       if (f.bowT > 15) finishInfil(true); // süre doldu: vurabildiğinle çekil
+      return;
+    }
+    if (f.phase === 'gate') {   // barut sabotajı: tokmak sürgüde ileri-geri gider
+      f.gateT = (f.gateT || 0) + dt;
+      if (f.vurusFx) { f.vurusFx.t -= dt; if (f.vurusFx.t <= 0) f.vurusFx = null; }
+      if (f.gateT > 16 && !f.bitti) { f.bitti = true; finishInfil(true); } // oyalanma: elindekiyle çekil
       return;
     }
     const ST = INFIL_STAGES[f.stage];
@@ -5916,12 +6084,15 @@ function update(dt) {
         b.mealEatT -= dt;
         b.mealFx = (b.mealFx || 0) - dt;
         if (b.mealFx <= 0) { b.mealFx = 1.3; addFloater(b.vx, b.vy - 44, '🍖', '#ffe9a8', 12); }
-        if (b.mealEatT <= 0) { b.meal = false; b.mealT = rr(80, 150); b.vstate = null; }
+        if (b.mealEatT <= 0) { b.meal = false; b.mealT = rr(80, 150); b.vstate = null; siteEat(b.outpost, 1); }
       } else if (walkTo(qx, qy, 72)) b.mealEatT = 4;
       continue;
     }
     b.mealT -= dt;
-    if (b.mealT <= 0 && !G.famine) { b.meal = true; b.mealEatT = 0; b.mealSlot = (G.mealQ = ((G.mealQ || 0) + 1) % 5); b.vstate = null; }
+    // Açlık artık KENDİ üssünün ambarına bakar: köyün eti bitti diye karakoldaki
+    // köylü greve gitmez, karakolun kendi eti varsa çalışmaya devam eder.
+    const evAc = siteAc(b.outpost);
+    if (b.mealT <= 0 && !evAc) { b.meal = true; b.mealEatT = 0; b.mealSlot = (G.mealQ = ((G.mealQ || 0) + 1) % 5); b.vstate = null; }
     // köylü muhabbeti: oyuncu yakından geçerken laf atar
     b.talkCd = Math.max(0, (b.talkCd || 0) - dt);
     if (b.talkCd <= 0 && !scared && dist(G.player.x, G.player.y, b.vx, b.vy) < 95) {
@@ -5929,7 +6100,7 @@ function update(dt) {
       const lines = ['Hasat bereketli bey\'im!', 'Sur sağlam olsun da...', 'Geceleri o sesler ne öyle?', 'Bu köy senin sayende ayakta.', 'Vulkar\'ın adamlarını görmüşler...', 'Sırtım ağrıyor ama şikayet etmem.', 'Konağın ocağı hiç sönmesin!'];
       addFloater(b.vx, b.vy - 56, '💬 ' + lines[ri(0, lines.length - 1)], '#fff3d9', 12);
     }
-    if (G.famine) { // 🍖 bitti: işçiler grevde — evin önünde aç dolanır
+    if (evAc) { // KENDİ üssünün eti bitti: bu yerleşkenin işçileri grevde
       b.vstate = null;
       b.vwT -= dt;
       if (b.vwT <= 0) {
@@ -6115,8 +6286,9 @@ function update(dt) {
   const troops = G.soldiers.length + G.garrisonUnits.length + G.commanders.length;
   const starving = G.stock.meat <= 0 && G.res.meat <= 0;
   const wasFamine = G.famine;
-  G.famine = starving && (troops > 0 || G.buildings.some(b => b.villager));
-  if (G.famine && !wasFamine) { toast('🍖 ET BİTTİ! İşçiler grevde — ordu da uzun sürerse dağılır!', true); SFX.no(); }
+  // G.famine artık KÖYÜN açlığı: karakolların kendi ambarı ve kendi grevi var
+  G.famine = starving && (troops > 0 || G.buildings.some(b => b.villager && !b.outpost));
+  if (G.famine && !wasFamine) { toast('🍖 KÖYÜN ETİ BİTTİ! İşçiler grevde — ordu da uzun sürerse dağılır!', true); SFX.no(); }
   if (G.famine) {
     G.famineT += dt;
     if (G.famineT > 45 && troops > 0) { // 45sn tahammül, sonra 40sn'de bir firar
@@ -6389,6 +6561,68 @@ function update(dt) {
     const C = COMMANDERS[c.id];
     const indep = cmdIndependent(c) && !G.caveRun; // inde görev yok: herkes yanında dövüşür
     c.cd = Math.max(0, c.cd - dt); c.swing = Math.max(0, c.swing - dt); c.flash = Math.max(0, c.flash - dt);
+    // ---- HAYATTA KALMA AKLI: ölmeden çekil, canını topla, geri dön ----
+    // Yağmaya çıkan komutan alan koruması olmadığı için ölene kadar dövüşüyordu.
+    // %28'in altına düşünce geri çekilir, en yakın kendi üssünde toparlanır,
+    // %85'e ulaşınca görevine kaldığı yerden devam eder.
+    if (!c.retreat && c.hp < c.maxHp * 0.28 && !G.caveRun) {
+      c.retreat = true; c.pursue = null; c.pursueT = 0; c.wp = null; c.patA = undefined;
+      addFloater(c.x, c.y - 70, '🩸 Çekiliyorum!', '#ff9a8a', 13);
+      toast('🩸 ' + C.name + ' ağır yaralı — geri çekilip toparlanıyor');
+    }
+    if (c.retreat) {
+      if (c.hp >= c.maxHp * 0.85) {
+        c.retreat = false; c.bestD = undefined; c.fStuck = 0;
+        addFloater(c.x, c.y - 70, '⚔️ Döndüm!', '#c8f0b8', 13);
+        toast('⚔️ ' + C.name + ' toparlandı — görevine dönüyor');
+      } else {
+        // en yakın kendi üssüne kaç (köy dahil), oraya varınca hızlı iyileş
+        let sig = CAMPFIRE, sd = dist(c.x, c.y, CAMPFIRE.x, CAMPFIRE.y);
+        for (const [oid, op3] of Object.entries(G.outposts)) {
+          if (!op3 || !op3.owned || op3.looted || op3.isVillage || !OUTPOSTS[oid]) continue;
+          const d3 = dist(c.x, c.y, OUTPOSTS[oid].x, OUTPOSTS[oid].y);
+          if (d3 < sd) { sd = d3; sig = OUTPOSTS[oid]; }
+        }
+        const evde = sd < 190;
+        if (!evde) {
+          let ang3 = Math.atan2(sig.y - c.y, sig.x - c.x);
+          const rt3 = wallRoute(c.x, c.y, sig.x, sig.y, false);
+          if (rt3 && rt3.wx !== undefined) ang3 = Math.atan2(rt3.wy - c.y, rt3.wx - c.x);
+          // yakındaki düşmandan uzaklaşacak şekilde kaç (kaçarken göğüs germesin)
+          let yakin = null, yd = 150;
+          for (const e of G.enemies) { const d4 = dist(c.x, c.y, e.x, e.y); if (d4 < yd) { yd = d4; yakin = e; } }
+          if (yakin) {
+            const kac = Math.atan2(c.y - yakin.y, c.x - yakin.x);
+            ang3 = Math.atan2(Math.sin(ang3) * 0.55 + Math.sin(kac) * 0.45, Math.cos(ang3) * 0.55 + Math.cos(kac) * 0.45);
+          }
+          const [nx3, ny3] = collide(c.x + Math.cos(ang3) * C.speed * 1.25 * dt, c.y + Math.sin(ang3) * C.speed * 1.25 * dt, 13);
+          c.x = nx3; c.y = ny3; c.walk += dt * 13; c.dir = ang3;
+        }
+        c.hp = Math.min(c.maxHp, c.hp + SOLDIER.regen * (evde ? 6 : 2.2) * dt);
+        cmdTroopsUpdate(c, dt);
+        return;   // çekilirken savaşmaz
+      }
+    }
+    // Kurtarılan esir: canı dolana dek savaşa girmez, oyuncunun etrafında dolanır
+    if (c.recovering) {
+      if (c.hp >= c.maxHp) {
+        c.recovering = false;
+        addFloater(c.x, c.y - 70, '⚔️ Hazırım!', '#c8f0b8', 13);
+        toast('⚔️ ' + C.name + ' iyileşti — saflara katıldı!');
+      } else {
+        c.hp = Math.min(c.maxHp, c.hp + Math.max(SOLDIER.regen, c.maxHp / 40) * dt); // ~30 sn toparlanma
+        c.recA = (c.recA || 0) + dt * 0.9;
+        const rx = p.x + Math.cos(c.recA) * 78, ry = p.y + Math.sin(c.recA) * 78 * 0.7;
+        const ang4 = Math.atan2(ry - c.y, rx - c.x);
+        if (dist(c.x, c.y, rx, ry) > 16) {
+          const [nx4, ny4] = collide(c.x + Math.cos(ang4) * C.speed * 0.9 * dt, c.y + Math.sin(ang4) * C.speed * 0.9 * dt, 13);
+          c.x = nx4; c.y = ny4; c.walk += dt * 9; c.dir = ang4;
+        }
+        if (dist(c.x, c.y, p.x, p.y) > 700) { c.x = p.x + rr(-40, 40); c.y = p.y + rr(-40, 40); }
+        cmdTroopsUpdate(c, dt);
+        return;
+      }
+    }
     let best = null, bd;
     if (indep && c.order.indexOf('guard:') === 0) {
       // koruma görevi: siteye 520px yaklaşan HER düşman hedeftir (kendinden uzak olsa da koşar)
@@ -8220,6 +8454,95 @@ function render() {
   if (G.infil) {
     const f = G.infil;
     ctx.fillStyle = 'rgba(8,6,14,0.78)'; ctx.fillRect(0, 0, VW, VH);
+    if (f.phase === 'chain') { // ⛓️ ZİNCİR KIRMA: yoldaşın bileklerindeki halkaları vur
+      const cx2 = VW / 2, zY = VH * 0.44;
+      // zindan duvarı
+      ctx.fillStyle = '#2b2338'; ctx.fillRect(0, zY - 90, VW, 190);
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      for (let bx = 8; bx < VW; bx += 54) for (let by = zY - 86; by < zY + 96; by += 30) ctx.fillRect(bx, by, 46, 24);
+      // meşale ışığı
+      const tg2 = ctx.createRadialGradient(cx2, zY - 20, 20, cx2, zY - 20, 240);
+      tg2.addColorStop(0, 'rgba(255,190,90,0.16)'); tg2.addColorStop(1, 'rgba(255,190,90,0)');
+      ctx.fillStyle = tg2; ctx.fillRect(0, zY - 90, VW, 190);
+      // zincire vurulmuş yoldaş
+      drawWarrior({ x: cx2, y: zY + 34, dir: -Math.PI / 2, walk: 0, swing: 0, flash: 0, hp: 1, maxHp: 1 },
+        { cloth: '#6a5a48', scale: 1.05, belt: true });
+      // halkalar (kırılınca kopuk uç sallanır)
+      for (const z of f.zincir) {
+        const zx = cx2 + z.o;
+        if (z.alive) {
+          ctx.strokeStyle = '#9aa3b0'; ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.arc(zx, zY - 4, 9, 0, TAU); ctx.stroke();
+          ctx.strokeStyle = '#6b7481'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(zx, zY - 13); ctx.lineTo(zx, zY - 30); ctx.stroke();
+        } else {
+          ctx.strokeStyle = '#5a6270'; ctx.lineWidth = 3;
+          const sal = Math.sin(G.t * 5 + zx) * 4;
+          ctx.beginPath(); ctx.moveTo(zx, zY - 30); ctx.lineTo(zx + sal, zY - 16); ctx.stroke();
+        }
+      }
+      if (f.shotFx) {
+        ctx.strokeStyle = f.shotFx.hit ? '#57d364' : '#ff6b5e'; ctx.lineWidth = 3; ctx.globalAlpha = f.shotFx.t / 0.3;
+        const [sx2, sy2] = bowCrossPos(f);
+        ctx.beginPath(); ctx.arc(sx2, sy2, 26 - f.shotFx.t * 50, 0, TAU); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      const [mx3, my3] = bowCrossPos(f);
+      ctx.fillStyle = '#e83a2e'; ctx.beginPath(); ctx.arc(mx3, my3, 5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#57d364'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+      for (let qa = 0; qa < 4; qa++) {
+        const base = Math.PI / 4 + qa * Math.PI / 2;
+        ctx.beginPath(); ctx.arc(mx3, my3, 17, base - 0.4, base + 0.4); ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 22px Georgia, serif'; ctx.fillStyle = '#ffd97e';
+      ctx.fillText('⛓️ Zincirleri kır!  (' + f.kirik + '/3)', cx2, zY - 108);
+      ctx.font = '13px sans-serif'; ctx.fillStyle = 'rgba(240,230,205,0.85)';
+      ctx.fillText('Halkalar küçük hedef — nişangah tam üstündeyken at. Yoldaşını vurma!', cx2, zY + 118);
+      ctx.font = '20px sans-serif';
+      ctx.fillText('➳'.repeat(Math.max(0, f.arrows)), cx2, zY + 148);
+      return;
+    }
+    if (f.phase === 'gate') { // 💥 BARUT SABOTAJI: tokmağı sürgünün işaretli yerine çak
+      const cx2 = VW / 2, gY = VH * 0.44;
+      // kapı
+      ctx.fillStyle = '#3a2a16'; ctx.fillRect(cx2 - 150, gY - 130, 300, 190);
+      ctx.fillStyle = '#6b4a26'; ctx.fillRect(cx2 - 138, gY - 120, 276, 174);
+      ctx.strokeStyle = 'rgba(30,18,6,0.5)'; ctx.lineWidth = 2;
+      for (let i2 = -120; i2 <= 120; i2 += 30) { ctx.beginPath(); ctx.moveTo(cx2 + i2, gY - 120); ctx.lineTo(cx2 + i2, gY + 54); ctx.stroke(); }
+      ctx.fillStyle = '#54606c'; ctx.fillRect(cx2 - 138, gY - 96, 276, 14); ctx.fillRect(cx2 - 138, gY + 8, 276, 14);
+      // barut fıçısı
+      ctx.fillStyle = '#4a3520'; ctx.fillRect(cx2 - 26, gY + 12, 52, 44);
+      ctx.fillStyle = '#63482c'; ctx.fillRect(cx2 - 26, gY + 18, 52, 8); ctx.fillRect(cx2 - 26, gY + 42, 52, 8);
+      ctx.font = '17px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('💥', cx2, gY + 44);
+      // sürgü çubuğu + hedef bandı
+      const barY = gY + 96, barX = cx2 - 210, barW = 420;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(barX, barY, barW, 22);
+      const yari2 = 0.13 - f.vurus * 0.028;
+      ctx.fillStyle = '#2f7a37';
+      ctx.fillRect(barX + (f.hedef - yari2) * barW, barY, yari2 * 2 * barW, 22);
+      ctx.fillStyle = '#57d364';
+      ctx.fillRect(barX + (f.hedef - yari2) * barW, barY, yari2 * 2 * barW, 5);
+      // tokmak
+      const tp = gateBarPos(f), tx3 = barX + tp * barW;
+      ctx.fillStyle = '#ffd257'; ctx.fillRect(tx3 - 3, barY - 8, 6, 38);
+      ctx.font = '22px sans-serif'; ctx.fillText('🔨', tx3, barY - 12);
+      if (f.vurusFx) {
+        ctx.globalAlpha = f.vurusFx.t / 0.3;
+        ctx.strokeStyle = f.vurusFx.hit ? '#57d364' : '#ff6b5e'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(barX + f.vurusFx.p * barW, barY + 11, 34 - f.vurusFx.t * 70, 0, TAU); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.font = 'bold 22px Georgia, serif'; ctx.fillStyle = '#ffd97e';
+      ctx.fillText('💥 Kapıyı sabote et!  (' + f.vurus + '/' + GATE_STRIKES + ')', cx2, gY - 150);
+      ctx.font = '13px sans-serif'; ctx.fillStyle = 'rgba(240,230,205,0.85)';
+      ctx.fillText('Tokmak YEŞİL banttayken çak — her isabet kapıyı %9 yıpratır.', cx2, barY + 52);
+      ctx.fillText('Iskalarsan gürültü çıkar, o anki hasarla kaçmak zorunda kalırsın.', cx2, barY + 72);
+      ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#ff9a8a';
+      ctx.fillText('kapıda birikmiş hasar: %' + Math.round((f.hasar || 0) * 100), cx2, barY + 98);
+      return;
+    }
     if (f.phase === 'bow') { // OK YAĞMURU: surdaki nöbetçilere nişan al
       const cx2 = VW / 2, wallY = VH * 0.42;
       // sur bandı + mazgallar
