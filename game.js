@@ -3538,8 +3538,8 @@ function locStatus(id) {
 }
 function drawMap() {
   mapLastDraw = G.t;
-  const availW = Math.min(window.innerWidth * 0.92, 940);
-  const availH = window.innerHeight * 0.72;
+  const availW = Math.max(340, Math.min(window.innerWidth * 0.94, 1400));   // taban: ölçüm henüz 0 iken harita kaybolmasın
+  const availH = Math.max(260, window.innerHeight * 0.94 - 165);            // başlık + araç butonları + ipucu payı
   mapScale = Math.min((availW - mapPad * 2) / OVERWORLD_W, (availH - mapPad * 2) / WORLD.h);
   const cw = OVERWORLD_W * mapScale + mapPad * 2, ch = WORLD.h * mapScale + mapPad * 2;
   mapCv.width = cw * DPR; mapCv.height = ch * DPR;
@@ -4585,8 +4585,8 @@ function closeWorld() { elWorldOverlay.classList.add('hidden'); }
 $('worldClose').addEventListener('click', closeWorld);
 elWorldOverlay.addEventListener('pointerdown', e => { if (e.target === elWorldOverlay) closeWorld(); });
 function drawWorld() {
-  const availW = Math.min(window.innerWidth * 0.92, 900);
-  const availH = window.innerHeight * 0.74;
+  const availW = Math.max(340, Math.min(window.innerWidth * 0.94, 1240));
+  const availH = Math.max(260, window.innerHeight * 0.94 - 130); // başlık + ipucu payı
   worldScale = Math.min(availW / WORLD_MAP_W, availH / WORLD_MAP_H);
   const cw = WORLD_MAP_W * worldScale, ch = WORLD_MAP_H * worldScale;
   worldCv.width = cw * DPR; worldCv.height = ch * DPR;
