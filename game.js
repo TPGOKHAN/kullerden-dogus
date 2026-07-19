@@ -759,6 +759,9 @@ const ENEMY_DEF = {
 // Zorluk: düşman gücü ve hanedan puanı çarpanı (yeni doğan düşmanlara uygulanır)
 // Denge (admin panelden düzenlenir, kd-balance): tüm ekonomi/katsayılar tek yerden
 const BAL = { emul: 1, php: 1, patk: 1, xp: 1, cost: 1, prod: 1, visitSec: 36000, cmdTroopCost: 30, autoOn: 1 };
+// Öncelik: yayınlanmış ayar (world-config.js) → üstüne yerel admin denemesi
+const KDC = (typeof window !== 'undefined' && window.KD_CONFIG) || {};
+try { Object.assign(BAL, KDC.balance || {}); } catch (e) { }
 try { Object.assign(BAL, JSON.parse(localStorage.getItem('kd-balance')) || {}); } catch (e) { }
 const DIFF = {
   kolay:  { name: 'Kolay', emul: 0.75, score: 0.75, raid: -1 },
@@ -5506,7 +5509,8 @@ const WORLD_POLY = {
 };
 // Görünüm paketi (admin panelinden): oyunun prosedürel renk paleti değiştirilebilir
 let SKIN = {};
-try { SKIN = JSON.parse(localStorage.getItem('kd-skin')) || {}; } catch (e) { }
+SKIN = JSON.parse(JSON.stringify(KDC.skin || {}));                       // yayındaki görünüm
+try { Object.assign(SKIN, JSON.parse(localStorage.getItem('kd-skin')) || {}); } catch (e) { }  // yerel deneme
 function applySkin() {
   if (SKIN.races) for (const [r2, c2] of Object.entries(SKIN.races)) if (RACES[r2]) RACES[r2].cloth = c2;
   if (SKIN.roofs) for (const [t2, c2] of Object.entries(SKIN.roofs)) if (BUILDINGS[t2]) BUILDINGS[t2].roof = c2;
@@ -9456,7 +9460,8 @@ setInterval(() => {
 // Harita düzeni: vilayet sırası → özel (editörden) ya da yerleşik düzen (eski "bölge" davranışıyla birebir)
 const LAYOUT_IDX = PROV0.idx % BUILTIN_MAPS.length;
 let CUSTOM_MAPS = {};
-try { CUSTOM_MAPS = JSON.parse(localStorage.getItem('kd-maps')) || {}; } catch (e) { }
+CUSTOM_MAPS = JSON.parse(JSON.stringify(KDC.maps || {}));               // yayındaki harita düzenleri
+try { Object.assign(CUSTOM_MAPS, JSON.parse(localStorage.getItem('kd-maps')) || {}); } catch (e) { }
 if (ISLAND) {
   // Dostluk Adası: ~5.5 kat alan, tek tohumdan herkese aynı dünya, düşmanlar 3 kademe çetin
   WORLD.w = 11500; WORLD.h = 6200;
@@ -9476,6 +9481,7 @@ function applyAdminWorld() {
   if (ISLAND || VISIT) return;
   let d = null;
   try { d = JSON.parse(localStorage.getItem('kd-admin-world-' + PROV0.id)); } catch (e) { }
+  if (!d) d = (KDC.worlds || {})[PROV0.id] || null;   // yerelde yoksa yayındaki dünya yerleşimi
   if (!d) return;
   if (d.enemies) {
     G.enemies = [];
