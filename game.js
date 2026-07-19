@@ -2087,27 +2087,84 @@ function autoSite(s) {
     }
     if (r1) return;
   }
-  // 2) sur/kale kapısı onarımı
-  if (s.id === 'village' && G.palisade.built && !G.palisade.gate.alive) {
-    G.autoGatePaid = G.autoGatePaid || {};
-    const r2 = autoPayFly(s, bcost(PAL.repair), G.autoGatePaid, PAL_GATE.x, PAL_GATE.y);
-    if (r2 === 2) {
-      G.autoGatePaid = {}; G.palisade.gate.hp = G.palisade.gate.maxHp; G.palisade.gate.alive = true;
-      SFX.build(); autoSay('village', 'köy kapısı onarıldı 🚪'); save();
+  // 2) KAPILAR: kırık olan hemen onarılır, hasarlısı (%70 altı) beklemeden tamir edilir
+  if (s.id === 'village' && G.palisade.built) {
+    const gt = G.palisade.gate;
+    if (!gt.alive || gt.hp < gt.maxHp * 0.7) {
+      const kirikti = !gt.alive;
+      G.autoGatePaid = G.autoGatePaid || {};
+      const r2 = autoPayFly(s, bcost(PAL.repair), G.autoGatePaid, PAL_GATE.x, PAL_GATE.y);
+      if (r2 === 2) {
+        G.autoGatePaid = {}; gt.hp = gt.maxHp; gt.alive = true;
+        SFX.build(); autoSay('village', kirikti ? 'köy kapısı onarıldı 🚪' : 'köy kapısı tamir edildi 🔧'); save();
+      }
+      if (r2) return;
     }
-    if (r2) return;
   }
-  if (s.op && s.op.wall) {
+  if (s.op && s.op.wall) { // karakol sur kapısı: kırık ya da yıpranmış
     const owg = G.structures.find(x2 => x2.kind === 'owgate' && x2.site === s.id);
-    if (owg && !owg.alive) {
+    if (owg && (!owg.alive || owg.hp < owg.maxHp * 0.7)) {
+      const kirikti2 = !owg.alive;
       s.op.gatePaid = s.op.gatePaid || {};
       const r3 = autoPayFly(s, bcost(OP_WALL.repair), s.op.gatePaid, owg.x, owg.y);
       if (r3 === 2) {
         delete s.op.gatePaid; owg.alive = true; owg.hp = owg.maxHp; s.op.wallGateHp = owg.maxHp;
-        SFX.build(); autoSay(s.id, 'sur kapısı onarıldı 🚪'); save();
+        SFX.build(); autoSay(s.id, kirikti2 ? 'sur kapısı onarıldı 🚪' : 'sur kapısı tamir edildi 🔧'); save();
       }
       if (r3) return;
     }
+  }
+  if (s.op && (s.id === 'fort' || s.id === 'legion')) { // fethedilen kalenin kendi kapısı
+    const og = G.structures.find(x2 => x2.kind === (s.id === 'fort' ? 'gate' : 'lgate'));
+    if (og && (!og.alive || og.hp < og.maxHp * 0.7)) {
+      const kirikti3 = !og.alive;
+      s.op.kgPaid = s.op.kgPaid || {};
+      const c5 = bcost(s.id === 'fort' ? { wood: 60, stone: 40 } : { stone: 80, iron: 12 });
+      const r5 = autoPayFly(s, c5, s.op.kgPaid, og.x, og.y);
+      if (r5 === 2) {
+        delete s.op.kgPaid; og.alive = true; og.hp = og.maxHp;
+        SFX.build(); autoSay(s.id, kirikti3 ? 'kale kapısı onarıldı 🚪' : 'kale kapısı tamir edildi 🔧'); save();
+      }
+      if (r5) return;
+    }
+  }
+  // 2b) SUR KARARI: baskınlar başladıysa (gün 2+ ya da bir baskın atlatıldıysa) savunma öncelikli
+  if (s.id === 'village' && !G.palisade.built && !VISIT && !ISLAND && (G.day >= 2 || G.raidsSurvived > 0)) {
+    G.autoPalPaid = G.autoPalPaid || {};
+    const r6 = autoPayFly(s, bcost(PAL.cost), G.autoPalPaid, CAMPFIRE.x + palR() * 0.7, CAMPFIRE.y);
+    if (r6 === 2) {
+      G.autoPalPaid = {};
+      G.palisade.built = true;
+      G.palisade.gate.maxHp = PAL.gateHp; G.palisade.gate.hp = PAL.gateHp; G.palisade.gate.alive = true;
+      rebuildPalisade();
+      SFX.build(); banner('🪵 KÖY SURU DİKİLDİ!'); autoSay('village', 'köy suru dikildi 🪵 — geceler artık daha güvenli'); save();
+    }
+    if (r6) return;
+  }
+  // 2c) TAŞ SUR: baskınlar sertleştiyse ahşap çit yetmez — bu noktada inşaattan önceliklidir
+  if (s.id === 'village' && G.palisade.built && G.palisade.lv < 2 && !VISIT && !ISLAND
+      && (G.raidsSurvived >= 2 || G.day >= 7)) {
+    G.autoPal2Paid = G.autoPal2Paid || {};
+    const r9 = autoPayFly(s, bcost(PAL2.cost), G.autoPal2Paid, CAMPFIRE.x + palR() * 0.7, CAMPFIRE.y);
+    if (r9 === 2) {
+      G.autoPal2Paid = {};
+      G.palisade.lv = 2;
+      G.palisade.gate.maxHp = PAL2.gateHp; G.palisade.gate.hp = PAL2.gateHp; G.palisade.gate.alive = true;
+      rebuildPalisade();
+      SFX.upgrade(); banner('🏰 TAŞ SUR YÜKSELDİ!'); autoSay('village', 'sur taşa çevrildi 🏰 (kapı 500 → 1200)'); save();
+    }
+    if (r9) return;
+  }
+  if (s.op && !s.op.wall && OP_WALL_SITES.includes(s.id) && !VISIT && !ISLAND) { // karakola çit
+    s.op.wallPaid = s.op.wallPaid || {};
+    const r7 = autoPayFly(s, bcost(OP_WALL.cost), s.op.wallPaid, s.anchor.x, s.anchor.y + 60);
+    if (r7 === 2) {
+      delete s.op.wallPaid;
+      s.op.wall = 1; s.op.wallGateHp = OP_WALL.gateHp;
+      rebuildOutpostWalls();
+      SFX.build(); autoSay(s.id, 'karakol suru dikildi 🪵'); save();
+    }
+    if (r7) return;
   }
   // 3) şantiye: planlı boş arsa inşaatı
   for (const pl of G.plots) {
@@ -4207,7 +4264,7 @@ const ACHIEVEMENTS = [
   { id: 'region2', icon: '🏔️', name: 'Göçebe Fatih', desc: '2. bölgeye ulaş', check: () => G.region >= 2 },
   { id: 'caravan', icon: '🐴', name: 'Kervancıbaşı', desc: '10 vergi kervanı ulaştır', check: () => G.stats.caravans >= 10 },
   { id: 'giant', icon: '👹', name: 'Dev Avcısı', desc: 'Dağ Devi\'ni devir', check: () => G.stats.bossKills >= 2 },
-  { id: 'suomi', icon: '🇫🇮', name: 'Suomi Hakanı', desc: 'Finlandiya\'yı birleştir', check: () => WORLD_PROVINCES.filter(p => p.country === 'finlandiya').every(p => G.worldConquered.includes(p.id)) },
+  { id: 'suomi', icon: '🔥', name: 'Kül Hakanı', desc: 'Kül Yakası\'nın tamamını fethet', check: () => { const ps = WORLD_PROVINCES.filter(p => p.country === 'kul'); return ps.length > 0 && ps.every(p => G.worldConquered.includes(p.id)); } },
   { id: 'world', icon: '🌍', name: 'Cihan Fatihi', desc: 'Bilinen dünyanın tamamını fethet', check: () => G.worldDone },
 ];
 function checkAchievements() {
