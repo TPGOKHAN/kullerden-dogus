@@ -2995,21 +2995,28 @@ const QUESTS = [
   { text: 'Hurda topla ve 1 demir erit (Demirci)', done: () => G.res.iron >= 1 || G.swordLv > 0, target: () => G.res.scrap >= 5 ? buildingPos('blacksmith') : nearestNode('scrap') },
   { text: 'Bir kuşam parçası kuşan (düşmanlar düşürür — 🎒 çanta)', done: () => Object.keys(G.equip).length > 0 || G.bag.length > 0, target: () => nearestNode('scrap') || buildingPos('blacksmith') },
   { text: 'Kışla kur ve 2 asker eğit', done: () => G.soldiersOwned >= 2, target: () => G.built.barracks ? buildingPos('barracks') : plotFor('barracks') },
-  { text: 'Barbar kampının totemini yok et', done: () => G.camp1Destroyed, target: () => ({ x: CAMP1.x, y: CAMP1.y }) },
+  { text: 'Barbar kampının totemini yok et', done: () => G.camp1Destroyed || !!G.outposts.camp1, target: () => ({ x: CAMP1.x, y: CAMP1.y }) },
   { text: 'Köylü Evi kur, köylü davet et ve iş ver', done: () => G.buildings.some(b => b.type === 'house' && b.villager && b.job), target: () => G.buildings.find(b => b.type === 'house') || plotFor('house') },
   { text: 'Gözcü Kulesi kur — geceleri baskın var!', done: () => !!G.built.watchtower, target: () => plotFor('watchtower') },
   { text: 'Köy suru inşa et (Köy Konağı menüsü)', done: () => G.palisade.built, target: () => ({ x: CAMPFIRE.x, y: CAMPFIRE.y }) },
   { text: 'İlk gece baskınını savuştur', done: () => G.raidsSurvived >= 1, target: () => ({ x: CAMPFIRE.x, y: CAMPFIRE.y }) },
   { text: 'Kuşatma Atölyesi kur', done: () => !!G.built.siege, target: () => plotFor('siege') },
-  { text: 'Kale önündeki ⚔️ kampta mancınık kur (kaynak götür!)', done: () => !!(G.sieges.fort.catapult && G.sieges.fort.catapult.done), target: () => SIEGE_SITES[0] },
-  { text: 'Taş kaleyi fethet! (kapı kırılınca ganimet sandığını aç)', done: () => G.chestOpened, target: () => {
+  // ARA ADIM GÖREVLERİ HEDEFE DE BAKAR: kaleyi mancınıksız (sızma sabotajı,
+  // koçbaşı, başka bir yolla) alan oyuncuda bu görev sonsuza dek asılı kalıyordu
+  // — üstelik fetihten sonra kuşatma kampı kapandığı için artık kurulamıyor da.
+  { text: 'Kale önündeki ⚔️ kampta mancınık kur (kaynak götür!)',
+    done: () => !!(G.sieges.fort.catapult && G.sieges.fort.catapult.done) || G.chestOpened || !!G.outposts.fort,
+    target: () => SIEGE_SITES[0] },
+  { text: 'Taş kaleyi fethet! (kapı kırılınca ganimet sandığını aç)', done: () => G.chestOpened || !!G.outposts.fort, target: () => {
       const g = G.structures.find(s2 => s2.kind === 'gate');
       if (g && g.alive) return { x: FORT.x0, y: (FORT.gateY0 + FORT.gateY1) / 2 };
       const c = G.structures.find(s2 => s2.kind === 'chest');
       return c && c.alive ? c : { x: FORT.cx, y: FORT.cy }; // kapı kırıldı → ok sandığa
     } },
-  { text: 'Lejyon kapısı önündeki ⚔️ kampta koçbaşı kur', done: () => !!(G.sieges.legion.ram && G.sieges.legion.ram.done), target: () => SIEGE_SITES[1] },
-  { text: 'Lejyon karargâhını fethet! (çelik kapı kırılınca büyük sandığı aç)', done: () => G.legionConquered, target: () => {
+  { text: 'Lejyon kapısı önündeki ⚔️ kampta koçbaşı kur',
+    done: () => !!(G.sieges.legion.ram && G.sieges.legion.ram.done) || G.legionConquered || !!G.outposts.legion,
+    target: () => SIEGE_SITES[1] },
+  { text: 'Lejyon karargâhını fethet! (çelik kapı kırılınca büyük sandığı aç)', done: () => G.legionConquered || !!G.outposts.legion, target: () => {
       const g = G.structures.find(s2 => s2.kind === 'lgate');
       if (g && g.alive) return { x: LEG.cx, y: LEG.y1 };
       const c = G.structures.find(s2 => s2.kind === 'chest2');
@@ -3026,11 +3033,20 @@ function plotFor(type) { return G.plots.find(p => !p.built && p.plan === type) |
 function buildingPos(type) { return G.buildings.find(b => b.type === type) || null; }
 function checkQuests() {
   let advanced = false;
-  while (G.questIdx < QUESTS.length && QUESTS[G.questIdx].done()) {
+  while (G.questIdx < QUESTS.length) {
+    // EMNİYET KEMERİ: sıradaki görev tamam değilse bile, DAHA SONRAKİ bir görev
+    // tamamlanmışsa bu adım geçilir. Oyuncu bir aşamayı beklenmedik bir yoldan
+    // aştığında (kaleyi mancınık kurmadan almak gibi) görev zinciri sonsuza dek
+    // asılı kalıyordu — üstelik o adımı geri dönüp yapmak da mümkün olmuyor.
+    const simdi = QUESTS[G.questIdx].done();
+    if (!simdi) {
+      let ilerisi = false;
+      for (let i = G.questIdx + 1; i < QUESTS.length; i++) if (QUESTS[i].done()) { ilerisi = true; break; }
+      if (!ilerisi) break;
+    }
     G.questIdx++;
     advanced = true;
-    SFX.upgrade();
-    addXp(40, G.player.x, G.player.y - 50);
+    if (simdi) { SFX.upgrade(); addXp(40, G.player.x, G.player.y - 50); }
     if (G.questIdx < QUESTS.length) toast('Yeni görev: ' + QUESTS[G.questIdx].text);
   }
   if (advanced) markRumors();
