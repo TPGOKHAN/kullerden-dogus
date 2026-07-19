@@ -6,7 +6,9 @@ canvas { display: block; position: fixed; inset: 0; touch-action: none; }
 
 /* Player card (top-left, like reference) */
 #playerCard { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; width: min(300px, 40vw); }
-#playerName { color: #f3e6c8; font-weight: 700; font-size: 15px; text-shadow: 0 1px 3px rgba(0,0,0,.7); margin-bottom: 3px; letter-spacing: .5px; }
+/* #hud pointer-events:none — isim tıklanabilir olsun diye burada geri açılır */
+#playerName { pointer-events: auto; cursor: pointer; color: #f3e6c8; font-weight: 700; font-size: 15px; text-shadow: 0 1px 3px rgba(0,0,0,.7); margin-bottom: 3px; letter-spacing: .5px; }
+#playerName:hover { color: #ffd97e; text-decoration: underline dotted; }
 #hpBar { position: relative; height: 16px; background: rgba(30,28,45,.85); border: 1px solid rgba(255,255,255,.25); border-radius: 4px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 #hpFill { height: 100%; width: 100%; background: linear-gradient(180deg, #e8506a, #b31237); transition: width .15s; }
 #hpText { position: absolute; inset: 0; text-align: center; color: #fff; font-size: 11px; line-height: 16px; font-weight: 600; text-shadow: 0 1px 2px #000; }

@@ -1994,12 +1994,37 @@ function netRefreshSocial() {
     .then(i => { G.netIsland = i; if (G.panelFor && G.panelFor.friendsPage) renderPanel(); })
     .catch(() => { });
 }
+// ---- OYUNCU ADI: tek kaynak ----
+// Ad üç yerde birden kullanılıyor (HUD, kuşam paneli, çok oyunculu). Eskiden
+// HUD ve kuşam panelinde 'Kael' SABİT yazıyordu; oyuncu adını değiştirse bile
+// oyun içinde eski ad görünüyordu.
+let PNAME = 'Kael';
+try { PNAME = localStorage.getItem('kd-name') || PNAME; } catch (e) { }
+const playerName = () => (PNAME || (NETP && NETP.name) || 'Kael');
+function setPlayerName(nm, sessiz) {
+  nm = (nm || '').trim().substring(0, 24);
+  if (nm.length < 2) { if (!sessiz) toast('Ad en az 2 harf olmalı', true); return false; }
+  PNAME = nm;
+  try { localStorage.setItem('kd-name', PNAME); } catch (e) { }
+  if (NETP && NETP.name !== PNAME) {           // çevrimiçiysen yoldaşların da görsün
+    NETP.name = PNAME;
+    try { localStorage.setItem('kd-net', JSON.stringify(NETP)); } catch (e) { }
+    rpcAuth('rename_player', { p_name: PNAME }).catch(() => { });
+    if (coopOn()) coopSend('hello', { name: PNAME, x: Math.round(G.player.x), y: Math.round(G.player.y) });
+    netQueueUpload(true);
+  }
+  updateHUD();
+  if (G.panelFor) renderPanel();
+  if (!sessiz) toast('Adın güncellendi: ' + PNAME);
+  return true;
+}
 function netRegister() {
-  const nm = prompt('Cihanda görünecek adın (2-24 harf):', 'Kael');
+  const nm = prompt('Cihanda görünecek adın (2-24 harf):', playerName());
   if (nm === null) return;
   rpc('register_player', { p_name: nm }).then(res => {
     NETP = res;
     try { localStorage.setItem('kd-net', JSON.stringify(NETP)); } catch (e) { }
+    setPlayerName(NETP.name, true);   // oyun içi ad da aynı olsun
     toast('🌐 Çevrimiçisin! Davet kodun: ' + NETP.code);
     if (!VISIT && !ISLAND) coopConnect('visit', 'kd-v-' + NETP.id, true);
     netQueueUpload(true); // köyü hemen buluta gönder
@@ -3140,7 +3165,7 @@ function updateHUD() {
   const p = G.player;
   elHpFill.style.width = (100 * p.hp / p.maxHp) + '%';
   elHpText.textContent = Math.ceil(p.hp) + ' / ' + p.maxHp;
-  const nm = 'Kael · Sv.' + G.level;
+  const nm = playerName() + ' · Sv.' + G.level;
   const elNm = $('playerName');
   if (elNm.textContent !== nm) elNm.textContent = nm;
   $('xpFill').style.width = Math.min(100, 100 * G.xp / xpNeed(G.level)) + '%';
@@ -3228,7 +3253,7 @@ function renderPanel() {
     elPanelTitle.textContent = '🎒 Kuşam & Çanta';
     // Sekmelerde de ❗ göster: hangi kahramanın çantasında daha iyisi bekliyor, tek bakışta belli olsun
     const tabRoz = eq2 => gearBetterFor(eq2) ? '<span class="tabBadge">!</span>' : '';
-    let html = '<div class="gearTabs"><button class="gearTab' + (isP ? ' on' : '') + '" data-who="player">🧍 Kael' + tabRoz(G.equip) + '</button>';
+    let html = '<div class="gearTabs"><button class="gearTab' + (isP ? ' on' : '') + '" data-who="player">🧍 ' + playerName() + tabRoz(G.equip) + '</button>';
     for (const cc of G.commanders)
       html += '<button class="gearTab' + (who === cc.id ? ' on' : '') + '" data-who="' + cc.id + '">' + COMMANDERS[cc.id].icon + ' ' + COMMANDERS[cc.id].name + tabRoz(cc.gear) + '</button>';
     html += '</div>';
@@ -3244,7 +3269,7 @@ function renderPanel() {
         (it ? '<div class="gs">' + gearStatText(it) + '</div>' : '') + '</div>';
     };
     const heroIcon = isP ? '💂' : COMMANDERS[c.id].icon;
-    const heroName = isP ? 'Kael' : COMMANDERS[c.id].name;
+    const heroName = isP ? playerName() : COMMANDERS[c.id].name;
     const heroTitle = isP ? 'Küllerden Doğan' : COMMANDERS[c.id].title || 'Komutan';
     html += '<div class="gearHero">';
     html += '<div class="gearCol">' + ['weapon', 'boots', 'ring'].map(slotCell).join('') + '</div>';
@@ -3286,7 +3311,7 @@ function renderPanel() {
       const n = autoEquip(eq);
       if (n > 0) {
         afterGearChange(isP, c); SFX.upgrade();
-        toast('⚡ ' + n + ' parça kuşanıldı — ' + (isP ? 'Kael' : COMMANDERS[c.id].name) + ' hazır!');
+        toast('⚡ ' + n + ' parça kuşanıldı — ' + (isP ? playerName() : COMMANDERS[c.id].name) + ' hazır!');
       } else toast('Üzerindekiler zaten en iyileri 👍');
       renderPanel();
     });
@@ -3454,13 +3479,8 @@ function renderPanel() {
     });
     const rn = document.getElementById('netRename');
     if (rn) rn.addEventListener('click', () => {
-      const nm = prompt('Yeni adın:', NETP.name);
-      if (!nm) return;
-      rpcAuth('rename_player', { p_name: nm }).then(() => {
-        NETP.name = nm.trim().substring(0, 24) || NETP.name;
-        try { localStorage.setItem('kd-net', JSON.stringify(NETP)); } catch (e) { }
-        toast('Adın güncellendi: ' + NETP.name); renderPanel();
-      }).catch(e => toast(netErrMsg(e), true));
+      const nm = prompt('Yeni adın:', playerName());
+      if (nm !== null) setPlayerName(nm);   // tek kaynak: HUD, kuşam paneli ve sunucu birlikte güncellenir
     });
     return;
   }
@@ -4269,6 +4289,14 @@ $('vicStay').addEventListener('click', () => $('victory').classList.add('hidden'
 $('vicMigrate').addEventListener('click', () => {
   $('victory').classList.add('hidden');
   openWorld(true); // cihan haritasından yeni sefer seç
+});
+// HUD'daki isme tıkla → adını değiştir (çevrimdışı oyuncunun tek yolu bu;
+// çevrimiçiyse aynı anda sunucuya ve yoldaşlara da işlenir)
+$('playerName').addEventListener('click', e => {
+  e.stopPropagation();
+  if (VISIT || MENU_OPEN) return;
+  const nm = prompt('Adın (2-24 harf):', playerName());
+  if (nm !== null) setPlayerName(nm);
 });
 $('btnMap').addEventListener('pointerdown', e => { e.stopPropagation(); audio(); toggleMap(); });
 // Çanta + Sız butonları: pointerdown BAZEN yutulabiliyor → click de dinlenir
