@@ -4561,7 +4561,10 @@ function setEditMode(on) {
     : 'Bir lokasyona tıkla → yolculuk başlar · [M] aç/kapat';
   drawMap();
 }
-$('mapEdit').addEventListener('click', () => setEditMode(!mapEditMode));
+// Harita DÜZENLEYİCİ yalnız admin panelinde (admin.html) görünür — oyunun
+// içinde işi yok. admin.html'de window.KD_ADMIN = true olduğu için orada durur.
+if (!window.KD_ADMIN) $('mapEdit').classList.add('hidden');
+$('mapEdit').addEventListener('click', () => { if (window.KD_ADMIN) setEditMode(!mapEditMode); });
 $('mapWorld').addEventListener('click', () => { toggleMap(false); openWorld(G.victoryShown); });
 $('mapSave').addEventListener('click', () => {
   CUSTOM_MAPS[LAYOUT_IDX] = JSON.parse(JSON.stringify(editGeo));
