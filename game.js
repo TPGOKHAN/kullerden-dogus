@@ -88,11 +88,12 @@ if (VISIT || ISLAND) MENU_RESUME = true; // ziyaret/ada: menüsüz doğrudan dü
 // (layout = idx % yerleşik harita sayısı, seed = idx → eski kayıtlar aynı dünyayı üretmeye devam eder).
 // FANTEZİ CİHANI: bölgeler + vilayetler + her vilayetin kendi IRK'ı (renk/silah/dövüş tarzı farklı)
 const WORLD_COUNTRIES = {
-  kul:   { name: 'Kül Yakası',  flag: '🔥', lx: 235, ly: 560, col: '#8a6a4a', edge: '#5a4028' },
-  orta:  { name: 'Ortadüzlük',  flag: '🌾', lx: 495, ly: 480, col: '#6a7a45', edge: '#41522a' },
-  sis:   { name: 'Sisbatak',    flag: '🌫️', lx: 760, ly: 555, col: '#5a7268', edge: '#32473e' },
-  demir: { name: 'Demirdağlar', flag: '⛰️', lx: 190, ly: 120, col: '#75604f', edge: '#463527' },
-  buz:   { name: 'Buzyaka',     flag: '❄️', lx: 610, ly: 60,  col: '#8fa5b0', edge: '#5a7482' },
+  // Renkler cihan haritasındaki biyomlardır: çöl / bozkır / bataklık / volkanik dağ / buzul
+  kul:   { name: 'Kül Yakası',  flag: '🔥', lx: 235, ly: 560, col: '#c9a15e', edge: '#8a6a35' },
+  orta:  { name: 'Ortadüzlük',  flag: '🌾', lx: 495, ly: 480, col: '#7c9e4c', edge: '#4e6b2c' },
+  sis:   { name: 'Sisbatak',    flag: '🌫️', lx: 760, ly: 555, col: '#5b8266', edge: '#33543f' },
+  demir: { name: 'Demirdağlar', flag: '⛰️', lx: 190, ly: 120, col: '#8a5c45', edge: '#553326' },
+  buz:   { name: 'Buzyaka',     flag: '❄️', lx: 610, ly: 60,  col: '#cfdfe8', edge: '#8ba7b8' },
 };
 const WORLD_PROVINCES = [
   // { id, name, country, race, wx/wy (cihan haritası), tier (zorluk), links (komşular) }
@@ -838,6 +839,30 @@ function genWorld() {
   scatterAt('scrap', 10, RUINS.x, RUINS.y, 300);                  // Harabeler
   scatterAt('scrap', 4, FORT.x0 - 350, FORT.cy - 150, 220);       // kale yolu
   scatterAt('tree', 8, RUINS.x + 300, RUINS.y - 350, 240);
+
+  // KARAKOL TEDARİĞİ: v3.7.1'de kaynaklar yerleşkelerden uzaklaştırıldı (birimler
+  // sur içinde takılmasın diye) ama fethedilen üslerin köylüleri de o zaman 540px
+  // öteye yürümeye başladı — ambara pratikte yük gelmiyordu. Her üssün yasak
+  // halkasının hemen DIŞINA kendi ormanı/taşlığı konur: yürüyüş ~170px'e iner.
+  function scatterRing(kind, n, cx3, cy3, r0, r1) {
+    let tries = 0;
+    while (n > 0 && tries++ < 1500) {
+      const a = rr(0, TAU), r2 = r0 + rng() * (r1 - r0);
+      const x = cx3 + Math.cos(a) * r2, y = cy3 + Math.sin(a) * r2 * 0.85;
+      if (x < 40 || x > WORLD.w - 40 || y < 40 || y > WORLD.h - 40 || blocked(x, y)) continue;
+      if (G.nodes.some(o => dist(x, y, o.x, o.y) < 52)) continue;
+      G.nodes.push({ kind, x, y, hp: NODE_DEF[kind].hp, alive: true, respT: 0, seed: rng() });
+      n--;
+    }
+  }
+  const tedarik = (cx3, cy3, r0) => {
+    scatterRing('tree', 7, cx3, cy3, r0, r0 + 150);
+    scatterRing('rock', 5, cx3, cy3, r0, r0 + 150);
+    scatterRing('scrap', 3, cx3, cy3, r0, r0 + 150);
+  };
+  tedarik(CAMP1.x, CAMP1.y, OUTPOST_CLEAR + 30);
+  tedarik(FORT.cx, FORT.cy, Math.max(FORT.x1 - FORT.cx, FORT.y1 - FORT.cy) + 190);
+  tedarik(LEG.cx, LEG.cy, Math.max(LEG.x1 - LEG.cx, LEG.y1 - LEG.cy) + 190);
 
   // Bölge bekçileri: orman kaçakçıları, ocak haydutları, harabe eşkıyaları
   spawnEnemy('barb', FOREST.x - 180, FOREST.y + 90, 'forest'); spawnEnemy('barb', FOREST.x + 160, FOREST.y - 60, 'forest');
@@ -2240,7 +2265,7 @@ function autoCaravan(s, sites) {
       if (tv < tcap * 0.4 && tv < enAz) { enAz = tv; hedef = { t, k, tcap }; }
     }
   }
-  if (!hedef) return;
+  if (!hedef) return autoSat(s, fazla, cap);   // kimse muhtaç değil → fazlayı tüccara sat
   const k = hedef.k;
   const yuk = Math.min(80, Math.floor((s.stock[k] || 0) - cap * 0.5), hedef.tcap - Math.floor(hedef.t.stock[k] || 0));
   if (yuk < 10) return;                                          // küçük yük için kervan kaldırmaya değmez
@@ -2255,6 +2280,31 @@ function autoCaravan(s, sites) {
     pts: [[B.x, B.y + 30]], i: 0,
   });
   toast('🐴 Yardım kervanı: ' + siteName(s.id).replace(' Karakolu', '') + ' → ' + siteName(hedef.t.id).replace(' Karakolu', '') + ' (' + yuk + icon + ')');
+  save();
+}
+// GÖÇEBE TÜCCARA SATIŞ: ambarı taşan ama kimsenin ihtiyacı olmayan kaynak parayla döner.
+// Oto yönetimin altın açığını (köylü daveti, asker, sur) bu kapatır — köy kendi kendini finanse eder.
+const SAT_FIYAT = { wood: 1.2, stone: 1.6, scrap: 2.2, iron: 6, meat: 5 };   // birim başına 🪙
+function autoSat(s, fazla, cap) {
+  const satilir = fazla.filter(k => SAT_FIYAT[k]);
+  if (!satilir.length) return;
+  // en çok biriken kaynağı sat
+  let k = satilir[0];
+  for (const k2 of satilir) if ((s.stock[k2] || 0) > (s.stock[k] || 0)) k = k2;
+  const yuk = Math.min(90, Math.floor((s.stock[k] || 0) - cap * 0.5));
+  if (yuk < 10) return;
+  const kazanc = Math.max(1, Math.round(yuk * SAT_FIYAT[k]));
+  s.stock[k] -= yuk;
+  G.carCd[s.id] = G.t + 55;
+  const A = s.anchor;
+  const icon = (RES_DEF.find(r => r[0] === k) || ['', ''])[1];
+  G.caravans.push({
+    caravan: true, trade: true, fromSite: s.id, res: k, amount: yuk, gold: kazanc, icon, leg: 0,
+    x: A.x, y: A.y + 40, hp: 280, maxHp: 280, dir: 0, walk: 0, flash: 0,
+    from: siteName(s.id).replace(' Karakolu', ''), toName: 'Tüccar',
+    pts: [[MERCHANT.x - 40, MERCHANT.y + 40]], i: 0,
+  });
+  toast('🐪 Satış kervanı: ' + siteName(s.id).replace(' Karakolu', '') + ' → Göçebe Tüccar (' + yuk + icon + ' → ' + kazanc + '🪙)');
   save();
 }
 // Yeni köylüye meslek: üste EN AZ bulunan iş verilir (hepsi oduncu olmasın).
@@ -4628,6 +4678,7 @@ function collide(px, py, r, isEnemy) {
 function clearCave() {
   for (const c of G.commanders) { c.patA = undefined; c.patT = 0; c.wp = null; c.sideT = 0; } // görev hedefleri tazelensin
   G.caveRooms = null; G.caveTorches = null; G.caveFloor = null;
+  G.caveFaces = null; G.caveShade = null; G.caveCrystals = null;
   G.walls = G.walls.filter(w => !w.cave);
   G.enemies = G.enemies.filter(e => e.camp !== 'cave');
   G.structures = G.structures.filter(s => !s.cave);
@@ -4695,6 +4746,25 @@ function buildDungeon(A) {
   }
   G.caveFloor = zemin;
   G.caveRooms = odalar.map(o => ({ x: A.x0 + o.x * CELL, y: A.y0 + o.y * CELL, w: o.w * CELL, h: o.h * CELL }));
+  // Kaya ile zeminin SINIRLARI ayrıca çıkarılır — duvarı zeminden ayıran şey renk farkı
+  // değil, bu kenarlardır: kayanın güney yüzü ışık alır (aydınlık taş şeridi), zeminin
+  // kuzey kenarına da kayanın gölgesi düşer. İkisi olmadan her şey tek düz leke oluyordu.
+  const yuzler = [], golgeler = [];
+  const kosu = (j, testi, hedef, dy) => {
+    let i = 0;
+    while (i < cols) {
+      if (!testi(j, i)) { i++; continue; }
+      let k = i;
+      while (k < cols && testi(j, k)) k++;
+      hedef.push({ x: A.x0 + i * CELL, y: A.y0 + (j + dy) * CELL, w: (k - i) * CELL });
+      i = k;
+    }
+  };
+  for (let j = 0; j < rows; j++) {
+    kosu(j, (jj, ii) => !acik[jj][ii] && jj + 1 < rows && acik[jj + 1][ii], yuzler, 1); // kayanın güney yüzü
+    kosu(j, (jj, ii) => acik[jj][ii] && jj - 1 >= 0 && !acik[jj - 1][ii], golgeler, 0);  // zemine düşen gölge
+  }
+  G.caveFaces = yuzler; G.caveShade = golgeler;
   return { odalar, dunya };
 }
 function enterCave() {
@@ -4709,9 +4779,12 @@ function enterCave() {
   const toplam = 6 + Math.floor(Math.random() * 3) + (G.region - 1);
   let kalan = toplam;
   G.caveTorches = [];
+  G.caveCrystals = [];
   for (let oi = 1; oi < odalar.length; oi++) {
     const p2 = dunya(odalar[oi]);
     G.caveTorches.push({ x: p2.x + rr(-40, 40), y: p2.y - rr(20, 60) }); // her odada meşale
+    if (oi % 2 === 0)                                                     // bazı odalarda ışıldayan kristal kümesi
+      G.caveCrystals.push({ x: p2.x + rr(-90, 90), y: p2.y + rr(30, 80), n: ri(2, 3), f: rng() * 6 });
     if (oi === odalar.length - 1) continue;                              // boss odasına aşağıda bakılır
     const adet = Math.max(1, Math.round(kalan / (odalar.length - oi)));
     for (let i = 0; i < adet && kalan > 0; i++, kalan--)
@@ -4906,18 +4979,30 @@ function drawWorld() {
   worldCv.style.width = cw + 'px'; worldCv.style.height = ch + 'px';
   const m = worldCv.getContext('2d');
   m.setTransform(DPR * worldScale, 0, 0, DPR * worldScale, 0, 0);
-  // deniz
+  // ---- DERİN DENİZ ----
   const sg = m.createLinearGradient(0, 0, 0, WORLD_MAP_H);
-  sg.addColorStop(0, '#274b63'); sg.addColorStop(1, '#1c3a50');
+  sg.addColorStop(0, '#10476e'); sg.addColorStop(0.55, '#0d3a5e'); sg.addColorStop(1, '#0a2f4d');
   m.fillStyle = sg; m.fillRect(0, 0, WORLD_MAP_W, WORLD_MAP_H);
-  m.strokeStyle = 'rgba(255,255,255,0.05)'; m.lineWidth = 1;
-  for (let y = 40; y < WORLD_MAP_H; y += 60) { m.beginPath(); m.moveTo(0, y); m.lineTo(WORLD_MAP_W, y); m.stroke(); }
-  // dalga süsleri
-  m.strokeStyle = 'rgba(255,255,255,0.10)';
-  for (let i = 0; i < 24; i++) {
-    const wx = (i * 397) % WORLD_MAP_W, wy = 30 + (i * 251) % (WORLD_MAP_H - 60);
-    m.beginPath(); m.arc(wx, wy, 8, Math.PI * 0.15, Math.PI * 0.85); m.stroke();
+  // dalga süsleri (deterministik: drawWorld saniyede 8 kez çağrılıyor, rng kullanılamaz)
+  m.strokeStyle = 'rgba(190,225,245,0.13)'; m.lineWidth = 1.4;
+  for (let i = 0; i < 46; i++) {
+    const wx = (i * 397) % WORLD_MAP_W, wy = 26 + (i * 251) % (WORLD_MAP_H - 52);
+    m.beginPath(); m.arc(wx, wy, 7 + (i % 3) * 2, Math.PI * 0.15, Math.PI * 0.85); m.stroke();
   }
+  // Ada silüeti: tüm diyar poligonları TEK yol olarak çizilip önce sığ su halkası,
+  // sonra kumsal kenarı basılır — parçalı ülkeler yerine tek bir kara kütlesi okunur.
+  const adaYolu = () => {
+    m.beginPath();
+    for (const poly of Object.values(WORLD_POLY)) {
+      m.moveTo(poly[0][0], poly[0][1]);
+      for (let i = 1; i < poly.length; i++) m.lineTo(poly[i][0], poly[i][1]);
+      m.closePath();
+    }
+  };
+  for (const [genislik, renk] of [[34, 'rgba(64,150,190,0.30)'], [22, 'rgba(86,175,205,0.34)'], [11, 'rgba(126,205,220,0.40)']]) {
+    adaYolu(); m.lineWidth = genislik; m.strokeStyle = renk; m.lineJoin = 'round'; m.stroke();
+  }
+  adaYolu(); m.lineWidth = 7; m.strokeStyle = '#d9c089'; m.stroke();   // kumsal şeridi
   // diyarlar: her bölgenin kendi toprağı rengi (fethedilen altın çerçeveli)
   for (const [cid, poly] of Object.entries(WORLD_POLY)) {
     const done = !!G.countryBonus[cid];
@@ -4929,30 +5014,102 @@ function drawWorld() {
     m.fill();
     m.strokeStyle = done ? '#ffd97e' : (CC.edge || 'rgba(20,28,18,0.8)'); m.lineWidth = done ? 3 : 2.5; m.stroke();
   }
-  // diyar süsleri: dağ / ağaç / kumul / sis / buz doodadları (harita eli çizim hissi)
-  m.textAlign = 'center';
-  const DOODADS = {
-    demir: ['⛰️', [[110, 220], [180, 150], [250, 120], [160, 290], [280, 200]]],
-    buz:   ['🏔️', [[450, 90], [560, 60], [660, 80], [760, 120], [520, 160]]],
-    orta:  ['🌲', [[400, 300], [480, 380], [560, 320], [430, 450], [560, 470]]],
-    sis:   ['🐸', [[700, 300], [800, 380], [720, 480], [860, 300], [780, 530]]],
-    kul:   ['🌵', [[150, 450], [260, 540], [340, 530], [120, 550], [230, 470]]],
+  // ---- ARAZİ DOKUSU: her diyar kendi biyomunu çizer (emoji değil, gerçek arazi) ----
+  // Konumlar deterministik bir karmadan gelir: drawWorld 120 ms'de bir çağrıldığı için
+  // rng() kullanılırsa doku her karede zıplar.
+  const H = i => { let t = (i * 2654435761) >>> 0; t = ((t ^ (t >>> 15)) * 2246822507) >>> 0; return ((t ^ (t >>> 13)) >>> 0) % 100000 / 100000; };
+  const icinde = (px, py, poly) => {
+    let ic = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) ic = !ic;
+    }
+    return ic;
   };
-  m.globalAlpha = 0.5;
-  for (const [cid, [icon, pts]] of Object.entries(DOODADS)) {
-    m.font = '15px sans-serif';
-    for (const [dx2, dy2] of pts) m.fillText(icon, dx2, dy2);
+  const dag = (px, py, s, taban, tepe, kar) => {          // dağ silüeti (+ istenirse karlı zirve)
+    m.fillStyle = taban;
+    m.beginPath(); m.moveTo(px - 13 * s, py); m.lineTo(px, py - 20 * s); m.lineTo(px + 13 * s, py); m.closePath(); m.fill();
+    m.fillStyle = tepe;
+    m.beginPath(); m.moveTo(px - 5 * s, py - 12 * s); m.lineTo(px, py - 20 * s); m.lineTo(px + 4 * s, py - 11 * s); m.closePath(); m.fill();
+    if (kar) { m.fillStyle = '#eef6fa'; m.beginPath(); m.moveTo(px - 5 * s, py - 13 * s); m.lineTo(px, py - 20 * s); m.lineTo(px + 5 * s, py - 13 * s); m.closePath(); m.fill(); }
+  };
+  const agac = (px, py, s, koyu, acik) => {
+    m.fillStyle = '#4a3220'; m.fillRect(px - 1 * s, py - 3 * s, 2 * s, 4 * s);
+    m.fillStyle = koyu;
+    m.beginPath(); m.moveTo(px - 6 * s, py - 2 * s); m.lineTo(px, py - 16 * s); m.lineTo(px + 6 * s, py - 2 * s); m.closePath(); m.fill();
+    m.fillStyle = acik;
+    m.beginPath(); m.moveTo(px - 3.5 * s, py - 5 * s); m.lineTo(px, py - 15 * s); m.lineTo(px + 1.5 * s, py - 6 * s); m.closePath(); m.fill();
+  };
+  const BIYOM = {
+    demir: (px, py, h) => h < 0.24                        // volkanik dağ sırası + lav çatlakları
+      ? (() => { dag(px, py, 1.1, '#5d3226', '#7d4433');
+          m.strokeStyle = '#ef6a24'; m.lineWidth = 1.6;
+          m.beginPath(); m.moveTo(px - 2, py - 14); m.lineTo(px + 1, py - 6); m.lineTo(px - 2, py); m.stroke(); })()
+      : dag(px, py, 0.75 + h * 0.5, '#5a4436', '#7a5f4b'),
+    buz:   (px, py, h) => h < 0.5 ? dag(px, py, 0.8 + h, '#8fa8b8', '#c2d6e2', true)
+      : (() => { m.fillStyle = 'rgba(240,250,255,0.55)';  // buz kütleleri
+          m.beginPath(); m.ellipse(px, py, 9 + h * 7, 5 + h * 3, h * 3, 0, TAU); m.fill(); })(),
+    orta:  (px, py, h) => h < 0.62 ? agac(px, py, 0.75 + h * 0.5, '#3d6b2c', '#5b8f3e')
+      : (() => { m.strokeStyle = 'rgba(120,160,80,0.6)'; m.lineWidth = 1.4; // ot tutamı
+          for (let k = -1; k <= 1; k++) { m.beginPath(); m.moveTo(px + k * 3, py); m.lineTo(px + k * 4.5, py - 6); m.stroke(); } })(),
+    sis:   (px, py, h) => h < 0.45
+      ? (() => { m.fillStyle = 'rgba(38,74,72,0.55)';     // bataklık gölcüğü
+          m.beginPath(); m.ellipse(px, py, 8 + h * 12, 4 + h * 6, h * 2, 0, TAU); m.fill();
+          m.strokeStyle = 'rgba(150,190,170,0.3)'; m.lineWidth = 1; m.stroke(); })()
+      : agac(px, py, 0.6 + h * 0.4, '#2f5340', '#44705a'),
+    kul:   (px, py, h) => h < 0.55
+      ? (() => { m.strokeStyle = 'rgba(160,124,66,0.5)'; m.lineWidth = 2.2;  // kum kumulları
+          m.beginPath(); m.arc(px, py + 5, 11 + h * 10, Math.PI * 1.08, Math.PI * 1.92); m.stroke(); })()
+      : (() => { m.fillStyle = '#8d6f42';                 // kaya sivrisi
+          m.beginPath(); m.moveTo(px - 5, py); m.lineTo(px - 1, py - 13); m.lineTo(px + 4, py); m.closePath(); m.fill(); })(),
+  };
+  for (const [cid, poly] of Object.entries(WORLD_POLY)) {
+    const ciz = BIYOM[cid]; if (!ciz) continue;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const [px, py] of poly) { x0 = Math.min(x0, px); y0 = Math.min(y0, py); x1 = Math.max(x1, px); y1 = Math.max(y1, py); }
+    const tohum = cid.charCodeAt(0) * 977 + cid.length * 31;
+    let kondu = 0;
+    for (let i = 0; i < 260 && kondu < 42; i++) {
+      const px = x0 + H(tohum + i * 3) * (x1 - x0), py = y0 + H(tohum + i * 3 + 1) * (y1 - y0);
+      if (!icinde(px, py, poly)) continue;
+      // kenardan biraz içeride kalsın (kumsala doku basmayalım)
+      if (!icinde(px + 16, py, poly) || !icinde(px - 16, py, poly) || !icinde(px, py + 14, poly) || !icinde(px, py - 14, poly)) continue;
+      m.globalAlpha = 0.85;
+      ciz(px, py, H(tohum + i * 3 + 2));
+      kondu++;
+    }
+    m.globalAlpha = 1;
   }
-  m.globalAlpha = 1;
+  // ---- NEHİRLER: dağlardan denize (haritaya ölçek ve yön duygusu katar) ----
+  const NEHIRLER = [
+    [[300, 150], [340, 250], [378, 330], [396, 430], [408, 505], [392, 585]],
+    [[600, 240], [645, 330], [678, 420], [694, 505], [700, 572]],
+    [[240, 300], [196, 372], [152, 452], [116, 520], [92, 548]],
+  ];
+  m.lineCap = 'round'; m.lineJoin = 'round';
+  for (const nehir of NEHIRLER) {
+    for (const [gen, renk] of [[7, 'rgba(20,60,90,0.35)'], [4.5, '#4d9ec4']]) {
+      m.beginPath(); m.moveTo(nehir[0][0], nehir[0][1]);
+      for (let i = 1; i < nehir.length - 1; i++) {
+        const xc = (nehir[i][0] + nehir[i + 1][0]) / 2, yc = (nehir[i][1] + nehir[i + 1][1]) / 2;
+        m.quadraticCurveTo(nehir[i][0], nehir[i][1], xc, yc);
+      }
+      m.lineTo(nehir[nehir.length - 1][0], nehir[nehir.length - 1][1]); // son parça: nehir denize ulaşsın
+      m.lineWidth = gen; m.strokeStyle = renk; m.stroke();
+    }
+  }
+  m.textAlign = 'center';
   // diyar etiketleri + ilerleme
   for (const cid of Object.keys(WORLD_POLY)) {
     const done = !!G.countryBonus[cid];
     const ps = WORLD_PROVINCES.filter(p => p.country === cid);
     const got = ps.filter(p => G.worldConquered.includes(p.id)).length;
     const CC = WORLD_COUNTRIES[cid];
-    m.font = 'bold 15px Georgia, serif';
-    m.fillStyle = done ? '#ffd97e' : 'rgba(20,16,8,0.72)';
-    m.fillText(CC.flag + ' ' + CC.name + (done ? ' 👑' : ' ' + got + '/' + ps.length), CC.lx, CC.ly);
+    m.font = 'bold 15px Georgia, serif'; m.lineJoin = 'round';
+    const dm = CC.flag + ' ' + CC.name + (done ? ' 👑' : ' ' + got + '/' + ps.length);
+    m.lineWidth = 4; m.strokeStyle = 'rgba(12,16,22,0.55)'; m.strokeText(dm, CC.lx, CC.ly);
+    m.fillStyle = done ? '#ffd97e' : 'rgba(252,246,232,0.95)';
+    m.fillText(dm, CC.lx, CC.ly);
   }
   // bağlantılar
   m.setLineDash([6, 5]); m.lineWidth = 2;
@@ -4978,11 +5135,16 @@ function drawWorld() {
     m.stroke();
     m.font = '13px sans-serif'; m.fillStyle = '#fff';
     m.fillText(st === 2 ? '✓' : st === 1 ? '⚔️' : '🔒', p.wx, p.wy + 4.5);
-    m.font = 'bold 11px sans-serif';
-    m.fillStyle = st === 0 ? 'rgba(200,195,180,0.55)' : '#f5ead0';
-    m.fillText(p.name, p.wx, p.wy + 30);
-    m.font = '9px sans-serif'; m.fillStyle = st === 0 ? 'rgba(30,24,14,0.5)' : 'rgba(25,20,10,0.8)';
-    m.fillText('K.' + p.tier + ' · ' + (RACES[p.race] ? RACES[p.race].name : ''), p.wx, p.wy + 41);
+    // Yazılar artık kar/çöl gibi AÇIK zeminlerin üstüne de düşüyor: koyu bir kontur
+    // olmadan okunmuyorlardı.
+    m.lineJoin = 'round';
+    const yaz = (metin, yy, boyut, renk) => {
+      m.font = boyut; m.lineWidth = 3.5; m.strokeStyle = 'rgba(12,16,22,0.72)';
+      m.strokeText(metin, p.wx, yy); m.fillStyle = renk; m.fillText(metin, p.wx, yy);
+    };
+    yaz(p.name, p.wy + 30, 'bold 11px sans-serif', st === 0 ? 'rgba(214,210,196,0.8)' : '#f7edd6');
+    yaz('K.' + p.tier + ' · ' + (RACES[p.race] ? RACES[p.race].name : ''), p.wy + 41, '9px sans-serif',
+      st === 0 ? 'rgba(198,194,182,0.72)' : 'rgba(240,232,212,0.92)');
     if (cur) { m.font = 'bold 10px sans-serif'; m.fillStyle = '#ff8a75'; m.fillText('SEN', p.wx, p.wy - 22); }
   }
   // toplam ilerleme
@@ -5745,7 +5907,11 @@ function update(dt) {
     // yemek molası: arada Konak ocağına gidip karnını doyurur (köy yaşantısı)
     if (b.mealT === undefined) b.mealT = rr(25, 90);
     if (b.meal) {
-      const qx = CAMPFIRE.x + 44 + (b.mealSlot || 0) * 20, qy = CAMPFIRE.y + 54;
+      // Yemek kendi üssünün ocağında yenir. Eskiden herkes KÖY ocağına yürüyordu:
+      // barbar kampındaki köylünün evi konağa 2510px uzakta, gidiş-dönüş 70 sn —
+      // adam gününün yarısını yolda geçirip ambara odun getiremiyordu.
+      const oca = b.outpost && OUTPOSTS[b.outpost] ? OUTPOSTS[b.outpost] : CAMPFIRE;
+      const qx = oca.x + 44 + (b.mealSlot || 0) * 20, qy = oca.y + 54;
       if ((b.mealEatT || 0) > 0) {
         b.mealEatT -= dt;
         b.mealFx = (b.mealFx || 0) - dt;
@@ -6305,7 +6471,35 @@ function update(dt) {
       spawnDust(cv.x, cv.y, 12);
       toast(cv.supply
         ? '🐴 ' + cv.from + ' → ' + cv.toName + ' yardım kervanı yağmalandı! −' + cv.amount + cv.icon
-        : '🐴 ' + cv.from + ' kervanı yağmalandı! −' + cv.gold + '🪙', true);
+        : cv.trade
+          ? '🐪 ' + cv.from + ' satış kervanı yağmalandı! −' + (cv.leg ? cv.gold + '🪙' : cv.amount + cv.icon)
+          : '🐴 ' + cv.from + ' kervanı yağmalandı! −' + cv.gold + '🪙', true);
+      continue;
+    }
+    if (cv.trade) { // satış kervanı: tüccara git (leg 0), parayı alıp üsse dön (leg 1)
+      const A = cv.fromSite === 'village' ? CAMPFIRE : OUTPOSTS[cv.fromSite];
+      const [tx4, ty4] = cv.leg === 0 ? cv.pts[0] : [A.x, A.y + 40];
+      if (dist(cv.x, cv.y, tx4, ty4) < 46) {
+        if (cv.leg === 0) {   // takas: yük gitti, kese doldu
+          cv.leg = 1; cv.gotGold = true;
+          spawnParts(cv.x, cv.y - 24, 10, { colors: ['#ffd257', '#fff3c9'], v: 50, life: 0.7, g: -20 });
+          addFloater(cv.x, cv.y - 46, '🐪 ' + cv.amount + cv.icon + ' → ' + cv.gold + '🪙', '#ffd257', 13);
+          SFX.coin();
+        } else {
+          cv.dead = true;
+          gain({ gold: cv.gold }, tx4, ty4 - 30);
+          G.stats.caravans++;
+          SFX.coin();
+          toast('🐪 Satış kervanı döndü — ' + cv.from + ' kasasına +' + cv.gold + '🪙');
+          save();
+        }
+        continue;
+      }
+      cv.dir = Math.atan2(ty4 - cv.y, tx4 - cv.x);
+      const rt4 = wallRoute(cv.x, cv.y, tx4, ty4, false);
+      if (rt4 && rt4.wx !== undefined) cv.dir = Math.atan2(rt4.wy - cv.y, rt4.wx - cv.x);
+      const [nx4, ny4] = collide(cv.x + Math.cos(cv.dir) * 74 * dt, cv.y + Math.sin(cv.dir) * 74 * dt, 14);
+      cv.x = nx4; cv.y = ny4; cv.walk += dt * 8;
       continue;
     }
     if (cv.supply) { // yardım kervanı: hedef üssün ambarına boşaltır
@@ -6673,11 +6867,11 @@ function renderGround() {
     g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + rr(-6, 6), y - 14, x + rr(-10, 10), y - 22); g.stroke();
   }
   // mağara şeridi: zifiri kaya + odanın taş zemini
-  g.fillStyle = '#16141c'; g.fillRect(OVERWORLD_W, 0, WORLD.w - OVERWORLD_W, WORLD.h);
+  g.fillStyle = '#0d0a16'; g.fillRect(OVERWORLD_W, 0, WORLD.w - OVERWORLD_W, WORLD.h);
   const A = CAVE_AREA;
-  g.fillStyle = '#3a3f46'; g.fillRect(A.x0, A.y0, A.w, A.h);
+  g.fillStyle = '#1b1628'; g.fillRect(A.x0, A.y0, A.w, A.h);
   for (let i = 0; i < 90; i++) {
-    g.fillStyle = rng() < 0.5 ? 'rgba(20,20,28,0.25)' : 'rgba(90,95,105,0.15)';
+    g.fillStyle = rng() < 0.5 ? 'rgba(8,5,16,0.3)' : 'rgba(120,102,160,0.09)';
     g.beginPath(); g.ellipse(A.x0 + rng() * A.w, A.y0 + rng() * A.h, rr(14, 60), rr(10, 36), rr(0, TAU), 0, TAU); g.fill();
   }
 }
@@ -7170,35 +7364,78 @@ function drawProp(pr) {
     ctx.beginPath(); ctx.roundRect(x - 5, y - 14, 10, 14, [5, 5, 0, 0]); ctx.fill();
     ctx.fillStyle = '#6f6f68'; ctx.fillRect(x - 3, y - 10, 6, 1.6); ctx.fillRect(x - 1, y - 12, 2, 6);
   } else if (pr.kind === 'cave') {
-    // Karanlık İn: kayalık tepe + zifiri ağız
-    drawShadow(x, y, 34, 12);
-    ctx.fillStyle = '#77776d';
-    ctx.beginPath(); ctx.moveTo(x - 36, y); ctx.lineTo(x - 22, y - 34); ctx.lineTo(x, y - 44); ctx.lineTo(x + 24, y - 32); ctx.lineTo(x + 36, y); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#8f8f85';
-    ctx.beginPath(); ctx.moveTo(x - 22, y - 34); ctx.lineTo(x, y - 44); ctx.lineTo(x + 6, y - 30); ctx.lineTo(x - 12, y - 26); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#141018';
-    ctx.beginPath(); ctx.ellipse(x, y - 8, 14, 15, 0, Math.PI, 0); ctx.fill();
+    // Karanlık İn: kayalık yamaç + oyulmuş kemer + derinliği olan zifiri tünel.
+    // Zindanın mor taş paletiyle aynı dili konuşur (aynı yer olduğu anlaşılsın).
+    drawShadow(x, y, 46, 15);
+    // arka kaya kütlesi (dış hat)
+    ctx.fillStyle = '#3b3450';
+    ctx.beginPath();
+    ctx.moveTo(x - 52, y + 4); ctx.lineTo(x - 46, y - 30); ctx.lineTo(x - 28, y - 50);
+    ctx.lineTo(x - 4, y - 60); ctx.lineTo(x + 22, y - 52); ctx.lineTo(x + 44, y - 32);
+    ctx.lineTo(x + 52, y + 4); ctx.closePath(); ctx.fill();
+    // aydınlık üst yüzeyler (ışık üstten)
+    ctx.fillStyle = '#5b5077';
+    ctx.beginPath();
+    ctx.moveTo(x - 46, y - 30); ctx.lineTo(x - 28, y - 50); ctx.lineTo(x - 4, y - 60);
+    ctx.lineTo(x + 6, y - 44); ctx.lineTo(x - 16, y - 34); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#6d6090';
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y - 60); ctx.lineTo(x + 22, y - 52); ctx.lineTo(x + 30, y - 38);
+    ctx.lineTo(x + 8, y - 42); ctx.closePath(); ctx.fill();
+    // yan kaya blokları (taban)
+    ctx.fillStyle = '#332c46';
+    ctx.beginPath(); ctx.ellipse(x - 40, y + 1, 15, 9, 0.3, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 42, y + 2, 13, 8, -0.25, 0, TAU); ctx.fill();
+    // kemer ağzı: dıştan içe koyulaşan tünel
+    const tg = ctx.createRadialGradient(x, y - 6, 3, x, y - 6, 26);
+    tg.addColorStop(0, '#050409'); tg.addColorStop(0.65, '#0d0a16'); tg.addColorStop(1, '#1d1830');
+    ctx.fillStyle = tg;
+    ctx.beginPath(); ctx.ellipse(x, y - 2, 20, 24, 0, Math.PI, 0); ctx.fill();
+    ctx.fillRect(x - 20, y - 2, 40, 5);
+    // kemer taşları
+    ctx.strokeStyle = '#4a4165'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.ellipse(x, y - 2, 22, 26, 0, Math.PI, 0); ctx.stroke();
+    ctx.fillStyle = '#584d78';
+    for (let a2 = Math.PI + 0.25; a2 < TAU - 0.25; a2 += 0.42) {
+      const kx = x + Math.cos(a2) * 22, ky = y - 2 + Math.sin(a2) * 26;
+      ctx.save(); ctx.translate(kx, ky); ctx.rotate(a2 + Math.PI / 2);
+      ctx.fillRect(-4, -3.5, 8, 7); ctx.restore();
+    }
+    // sarkıtlar (ağzın üstünde diş sırası)
+    ctx.fillStyle = '#2a2440';
+    for (let i = -2; i <= 2; i++) {
+      const sx2 = x + i * 7.5, sh = 5 + ((i + 2) % 3) * 3;
+      ctx.beginPath(); ctx.moveTo(sx2 - 3, y - 22); ctx.lineTo(sx2, y - 22 + sh); ctx.lineTo(sx2 + 3, y - 22); ctx.fill();
+    }
+    // yosun tutamları
+    ctx.fillStyle = 'rgba(92,132,74,0.55)';
+    ctx.beginPath(); ctx.ellipse(x - 34, y - 26, 9, 4, -0.3, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 33, y - 20, 7, 3.5, 0.35, 0, TAU); ctx.fill();
     const dolu = (G.caveCd || 0) <= 0;
     if (dolu) { // HAZIR: ağızdan sızan altın ışık + nabız halkası + 💎
       const nb = 0.55 + Math.sin(G.t * 2.2) * 0.45;
-      const gl = ctx.createRadialGradient(x, y - 10, 2, x, y - 10, 46);
-      gl.addColorStop(0, 'rgba(255,205,90,' + (0.34 * nb + 0.16) + ')');
+      const gl = ctx.createRadialGradient(x, y - 6, 16, x, y - 6, 62);
+      gl.addColorStop(0, 'rgba(255,205,90,' + (0.3 * nb + 0.14) + ')');
       gl.addColorStop(1, 'rgba(255,190,70,0)');
-      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y - 10, 46, 0, TAU); ctx.fill();
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y - 6, 62, 0, TAU); ctx.fill();
       ctx.strokeStyle = 'rgba(255,214,120,' + (0.5 - nb * 0.3) + ')'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(x, y + 2, 30 + nb * 12, 12 + nb * 5, 0, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(x, y + 4, 38 + nb * 14, 14 + nb * 6, 0, 0, TAU); ctx.stroke();
+      // ağızdan YERE sızan ışık huzmesi (ağzın kendisi karanlık kalmalı, yoksa
+      // tünel altın bir lekeye dönüşüp kemer okunmuyor)
+      ctx.fillStyle = 'rgba(255,206,110,' + (0.09 + nb * 0.07) + ')';
+      ctx.beginPath(); ctx.moveTo(x - 15, y + 1); ctx.lineTo(x + 15, y + 1); ctx.lineTo(x + 30, y + 16); ctx.lineTo(x - 30, y + 16); ctx.fill();
       const bl = Math.sin(G.t * 1.8) > -0.4 ? 1 : 0;
-      if (bl) { ctx.fillStyle = '#ffd257'; ctx.beginPath(); ctx.arc(x - 4, y - 10, 1.6, 0, TAU); ctx.arc(x + 4, y - 10, 1.6, 0, TAU); ctx.fill(); }
-      ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('💎', x, y - 52 + Math.sin(G.t * 2.4) * 3);
+      if (bl) { ctx.fillStyle = '#ffd257'; ctx.beginPath(); ctx.arc(x - 5, y - 12, 1.8, 0, TAU); ctx.arc(x + 5, y - 12, 1.8, 0, TAU); ctx.fill(); }
+      ctx.font = '16px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('💎', x, y - 68 + Math.sin(G.t * 2.4) * 3);
       ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = '#ffd97e';
-      ctx.fillText('HAZİNE VAR', x, y - 64);
+      ctx.fillText('HAZİNE VAR', x, y - 80);
     } else { // BOŞ: soğuk gri, kalan süre
-      ctx.fillStyle = 'rgba(30,34,48,0.35)';
-      ctx.beginPath(); ctx.ellipse(x, y - 6, 34, 26, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(28,32,46,0.4)';
+      ctx.beginPath(); ctx.ellipse(x, y - 18, 54, 44, 0, 0, TAU); ctx.fill();
       const m2 = Math.floor(G.caveCd / 60), s2 = Math.floor(G.caveCd % 60);
       ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(200,205,215,0.85)';
-      ctx.fillText('⏳ ' + m2 + ':' + String(s2).padStart(2, '0'), x, y - 52);
+      ctx.fillText('⏳ ' + m2 + ':' + String(s2).padStart(2, '0'), x, y - 68);
     }
   } else if (pr.kind === 'trader') {
     // renkli tüccar konağı: büyük çadır + halı + deve + mal sandıkları
@@ -7433,13 +7670,13 @@ function drawCatapult(c) {
 }
 function drawFortWalls() {
   for (const w of G.walls) {
-    if (w.cave) { // zindan kayası: mazgal yok, çatlaklı kütle
-      ctx.fillStyle = '#4a4756';
-      ctx.fillRect(w.x, w.y - 14, w.w, w.h + 14);
-      ctx.fillStyle = '#565367';
-      ctx.fillRect(w.x, w.y - 14, w.w, 9);
-      ctx.fillStyle = 'rgba(24,22,32,0.5)';
-      for (let bx = w.x + 8; bx < w.x + w.w - 6; bx += 34) ctx.fillRect(bx, w.y - 6, 16, 3);
+    if (w.cave) { // zindan kayası: koyu kütle + karo dokusu (aydınlık dudak ayrıca çizilir)
+      ctx.fillStyle = '#211b2f';
+      ctx.fillRect(w.x, w.y, w.w, w.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.045)';                // kaba blok dokusu
+      for (let bx = w.x + 4; bx < w.x + w.w - 6; bx += 42) ctx.fillRect(bx, w.y + 5, 34, 14);
+      ctx.strokeStyle = 'rgba(9,6,16,0.5)'; ctx.lineWidth = 1;
+      for (let bx = w.x + 42; bx < w.x + w.w - 2; bx += 42) { ctx.beginPath(); ctx.moveTo(bx, w.y); ctx.lineTo(bx, w.y + w.h); ctx.stroke(); }
       continue;
     }
     ctx.fillStyle = '#8f8f95';
@@ -7450,6 +7687,18 @@ function drawFortWalls() {
     ctx.fillStyle = '#77777d';
     if (w.w > w.h) { for (let x = w.x + 6; x < w.x + w.w - 8; x += 22) ctx.fillRect(x, w.y - 20, 10, 6); }
     else { for (let y = w.y - 12; y < w.y + w.h - 6; y += 24) ctx.fillRect(w.x + w.w / 2 - 5, y, 10, 6); }
+  }
+  // Zindanda kayanın zemine bakan yüzü: ışık alan açık taş dudağı. Duvarı zeminden
+  // ayıran asıl ipucu bu — renk farkı tek başına yeterli olmuyor.
+  if (G.caveRun) for (const f of (G.caveFaces || [])) {
+    ctx.fillStyle = '#7a6aa0';
+    ctx.fillRect(f.x, f.y - 11, f.w, 11);
+    ctx.fillStyle = '#8f7dba';
+    ctx.fillRect(f.x, f.y - 11, f.w, 4);
+    ctx.fillStyle = 'rgba(20,13,34,0.55)';
+    for (let bx = f.x + 10; bx < f.x + f.w - 8; bx += 40) ctx.fillRect(bx, f.y - 8, 15, 3);
+    ctx.fillStyle = 'rgba(10,6,18,0.35)';
+    ctx.fillRect(f.x, f.y - 1.5, f.w, 1.5);
   }
 }
 
@@ -7474,20 +7723,42 @@ function render() {
 
   // zindan: oda zeminleri ve meşaleler (duvarların altında)
   if (G.caveRun && G.caveFloor) {
+    const gorunur = (x, y, w, h) => !(x > cx + VW || x + w < cx || y > cy + VH || y + h < cy);
     for (const f of G.caveFloor) { // koridorlar dahil tüm yürünebilir zemin
-      if (f.x > cx + VW || f.x + f.w < cx || f.y > cy + VH || f.y + f.h < cy) continue;
-      ctx.fillStyle = '#33303f';
+      if (!gorunur(f.x, f.y, f.w, f.h)) continue;
+      ctx.fillStyle = '#4a4166';                                 // kayadan (#211b2f) belirgin şekilde AÇIK
       ctx.fillRect(f.x, f.y, f.w, f.h);
     }
-    for (const r of (G.caveRooms || [])) { // odalar biraz daha açık + çerçeveli
-      if (r.x > cx + VW || r.x + r.w < cx || r.y > cy + VH || r.y + r.h < cy) continue;
-      ctx.fillStyle = '#3d3950';
+    for (const r of (G.caveRooms || [])) { // odalar koridordan da açık: nerede olduğun belli olsun
+      if (!gorunur(r.x, r.y, r.w, r.h)) continue;
+      ctx.fillStyle = '#5d5280';
       ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.strokeStyle = 'rgba(16,14,22,0.6)'; ctx.lineWidth = 3;
-      ctx.strokeRect(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3);
-      ctx.fillStyle = 'rgba(255,255,255,0.035)';                // zemin taşları
-      for (let gx2 = r.x + 20; gx2 < r.x + r.w - 10; gx2 += 46)
-        for (let gy2 = r.y + 18; gy2 < r.y + r.h - 10; gy2 += 40) ctx.fillRect(gx2, gy2, 26, 20);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';                  // döşeme taşları
+      for (let gx2 = r.x + 6; gx2 < r.x + r.w - 8; gx2 += 44)
+        for (let gy2 = r.y + 6; gy2 < r.y + r.h - 8; gy2 += 40) ctx.fillRect(gx2, gy2, 38, 34);
+      ctx.strokeStyle = 'rgba(24,17,38,0.45)'; ctx.lineWidth = 1;  // derzler
+      for (let gx2 = r.x + 44; gx2 < r.x + r.w - 4; gx2 += 44) { ctx.beginPath(); ctx.moveTo(gx2, r.y); ctx.lineTo(gx2, r.y + r.h); ctx.stroke(); }
+      for (let gy2 = r.y + 40; gy2 < r.y + r.h - 4; gy2 += 40) { ctx.beginPath(); ctx.moveTo(r.x, gy2); ctx.lineTo(r.x + r.w, gy2); ctx.stroke(); }
+    }
+    for (const g2 of (G.caveShade || [])) { // kayanın zemine düşen gölgesi (derinlik)
+      if (!gorunur(g2.x, g2.y, g2.w, 16)) continue;
+      const gr = ctx.createLinearGradient(0, g2.y, 0, g2.y + 15);
+      gr.addColorStop(0, 'rgba(12,8,22,0.55)'); gr.addColorStop(1, 'rgba(12,8,22,0)');
+      ctx.fillStyle = gr; ctx.fillRect(g2.x, g2.y, g2.w, 15);
+    }
+    for (const k of (G.caveCrystals || [])) { // turkuaz kristal kümeleri (zindanın renk vurgusu)
+      if (k.x < cx - 60 || k.x > cx + VW + 60 || k.y < cy - 60 || k.y > cy + VH + 60) continue;
+      const nb = 0.65 + Math.sin(G.t * 2.4 + k.f) * 0.35;
+      const hl = ctx.createRadialGradient(k.x, k.y - 8, 2, k.x, k.y - 8, 46);
+      hl.addColorStop(0, 'rgba(60,230,205,' + (0.22 * nb) + ')'); hl.addColorStop(1, 'rgba(60,230,205,0)');
+      ctx.fillStyle = hl; ctx.beginPath(); ctx.arc(k.x, k.y - 8, 46, 0, TAU); ctx.fill();
+      for (let i = 0; i < k.n; i++) {
+        const ox2 = (i - (k.n - 1) / 2) * 11, hh2 = 16 + (i % 2) * 9;
+        ctx.fillStyle = '#1c6d68';
+        ctx.beginPath(); ctx.moveTo(k.x + ox2 - 5, k.y); ctx.lineTo(k.x + ox2, k.y - hh2); ctx.lineTo(k.x + ox2 + 5, k.y); ctx.fill();
+        ctx.fillStyle = 'rgba(78,240,214,' + (0.55 + 0.35 * nb) + ')';
+        ctx.beginPath(); ctx.moveTo(k.x + ox2 - 2, k.y - 2); ctx.lineTo(k.x + ox2, k.y - hh2 + 2); ctx.lineTo(k.x + ox2 + 2, k.y - 2); ctx.fill();
+      }
     }
     for (const t of (G.caveTorches || [])) {
       // NOT: vis() bu noktada henüz tanımlı değil (TDZ) — sınır kontrolü elle yapılır
@@ -7682,25 +7953,52 @@ function render() {
   }
   // karakol surları (her zaman ahşap kazık görünümü)
   for (const st of G.opStakes) if (vis(st.x, st.y)) list.push({ y: st.y, f: () => drawOpStake(st) });
-  for (const s of G.structures) if (s.kind === 'owgate' && s.alive && vis(s.x, s.y)) list.push({ y: s.y, f: () => {
-    drawShadow(s.x, s.y, 26, 8);
-    // Kapı, sur halkasının o noktadaki TEĞETİNE oturur (ang + 90°); sabit dikey
-    // çizilince halkanın eğimli kısımlarında yamuk duruyordu. Çizim merkeze göre.
+  // Kapı KIRIKKEN de çizilir: eskiden `s.alive` koşulu yüzünden hiçbir şey çizilmiyor,
+  // surda sebepsiz bir boşluk kalıyordu ("kapı hiç gözükmüyor"). Artık direkler durur,
+  // kanat kırılmış olarak yerde yatar — orada bir kapı olduğu ve onarım gerektiği belli.
+  for (const s of G.structures) if (s.kind === 'owgate' && vis(s.x, s.y)) list.push({ y: s.y, f: () => {
+    drawShadow(s.x, s.y, 30, 9);
+    // Kapı DİK çizilir — kazıklar gibi. v3.8.2'de halkanın teğetine döndürmüştüm;
+    // oyunun sahte-3B çiziminde döndürülen dikdörtgen "yere serilmiş tahta" gibi
+    // duruyor, kapı olduğu anlaşılmıyordu. Genişlik açının yatay bileşenine göre
+    // hafifçe daralır (yandan bakış hissi), yükseklik hep aynı kalır.
+    const yatay = 0.55 + 0.45 * Math.abs(Math.sin(s.ang || 0));
     ctx.save();
-    ctx.translate(s.x, s.y - 15);
-    ctx.rotate((s.ang || 0) + Math.PI / 2);
-    ctx.fillStyle = '#6b4a26';
-    ctx.fillRect(-27, -19, 9, 38); ctx.fillRect(18, -19, 9, 38);   // yan direkler
-    ctx.fillStyle = '#8a6234';
-    ctx.fillRect(-19, -14, 38, 28);                                 // kapı kanadı
-    ctx.strokeStyle = 'rgba(50,32,12,0.6)'; ctx.lineWidth = 1.5;
-    for (let i = -12; i <= 12; i += 8) { ctx.beginPath(); ctx.moveTo(i, -14); ctx.lineTo(i, 14); ctx.stroke(); }
-    ctx.fillStyle = '#c9a24a';                                      // demir halka
-    ctx.beginPath(); ctx.arc(0, 0, 3, 0, TAU); ctx.fill();
+    ctx.translate(s.x, s.y);
+    ctx.scale(yatay, 1);
+    const KY = 46;                                                 // kapı yüksekliği
+    ctx.fillStyle = '#5d3f20';                                     // yan direkler (kapı kırılsa da durur)
+    ctx.fillRect(-40, -KY - 4, 13, KY + 10); ctx.fillRect(27, -KY - 4, 13, KY + 10);
+    ctx.fillStyle = '#6b4a26';                                     // direk başlıkları
+    ctx.beginPath(); ctx.moveTo(-40, -KY - 4); ctx.lineTo(-33.5, -KY - 12); ctx.lineTo(-27, -KY - 4); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(27, -KY - 4); ctx.lineTo(33.5, -KY - 12); ctx.lineTo(40, -KY - 4); ctx.fill();
+    ctx.fillStyle = '#4f351a'; ctx.fillRect(-42, -KY - 8, 84, 8);   // üst kiriş
+    if (s.alive) {
+      ctx.fillStyle = '#8a6234'; ctx.fillRect(-28, -KY, 56, KY);    // çift kanat
+      ctx.strokeStyle = 'rgba(46,29,10,0.55)'; ctx.lineWidth = 1.5;
+      for (let i = -21; i <= 21; i += 7) { ctx.beginPath(); ctx.moveTo(i, -KY + 2); ctx.lineTo(i, -2); ctx.stroke(); }
+      ctx.fillStyle = '#54606c';                                    // demir kuşaklar
+      ctx.fillRect(-28, -KY + 9, 56, 5); ctx.fillRect(-28, -16, 56, 5);
+      ctx.strokeStyle = 'rgba(30,20,8,0.75)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, -KY); ctx.lineTo(0, 0); ctx.stroke();   // kanat aralığı
+      ctx.fillStyle = '#c9a24a';                                    // halkalar
+      ctx.beginPath(); ctx.arc(-7, -21, 3.2, 0, TAU); ctx.arc(7, -21, 3.2, 0, TAU); ctx.fill();
+    } else {
+      // kırık: direkler ayakta, kanatlar parçalanıp yere düşmüş
+      ctx.fillStyle = 'rgba(70,48,22,0.5)';
+      ctx.fillRect(-26, -13, 24, 10); ctx.fillRect(4, -8, 22, 8);
+      ctx.fillStyle = '#3a2a16';
+      ctx.fillRect(-28, -KY, 7, 15); ctx.fillRect(20, -KY, 8, 11);   // kırık kanat kalıntıları
+      ctx.strokeStyle = 'rgba(35,22,8,0.6)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-22, -6); ctx.lineTo(16, -2); ctx.stroke();
+    }
     ctx.restore();
-    if (s.hp < s.maxHp) {
-      ctx.fillStyle = 'rgba(20,15,8,0.7)'; ctx.fillRect(s.x - 22, s.y - 44, 44, 5);
-      ctx.fillStyle = '#d8763a'; ctx.fillRect(s.x - 22, s.y - 44, 44 * s.hp / s.maxHp, 5);
+    if (!s.alive) { // kırık kapı: uyarı işareti
+      ctx.font = '15px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('🚨', s.x, s.y - 62 + Math.sin(G.t * 3) * 2);
+    } else if (s.hp < s.maxHp) {
+      ctx.fillStyle = 'rgba(20,15,8,0.7)'; ctx.fillRect(s.x - 22, s.y - 68, 44, 5);
+      ctx.fillStyle = '#d8763a'; ctx.fillRect(s.x - 22, s.y - 68, 44 * s.hp / s.maxHp, 5);
     }
   } });
   for (const cv of G.caravans) if (vis(cv.x, cv.y)) list.push({ y: cv.y, f: () => {
@@ -7709,16 +8007,17 @@ function render() {
     if (Math.cos(cv.dir) < 0) ctx.scale(-1, 1);
     ctx.fillStyle = '#4f3319';
     ctx.beginPath(); ctx.arc(-10, -3, 5, 0, TAU); ctx.arc(6, -3, 5, 0, TAU); ctx.fill(); // tekerler
-    ctx.fillStyle = cv.supply ? '#6b7a3f' : '#8a5c33'; ctx.fillRect(-16, -16, 24, 11); // kasa
-    if (cv.supply) { ctx.fillStyle = '#9fb060'; ctx.fillRect(-14, -19, 20, 4); } // yüklü çuval sırtı
+    const satisDolu = cv.trade && cv.leg === 0;                                    // giderken yüklü, dönerken keseli
+    ctx.fillStyle = cv.supply || satisDolu ? '#6b7a3f' : '#8a5c33'; ctx.fillRect(-16, -16, 24, 11); // kasa
+    if (cv.supply || satisDolu) { ctx.fillStyle = '#9fb060'; ctx.fillRect(-14, -19, 20, 4); } // yüklü çuval sırtı
     else { ctx.fillStyle = '#ffd257'; ctx.fillRect(-13, -14, 6, 4); ctx.fillRect(-4, -14, 6, 4); } // altın çuvalları
-    ctx.font = '15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🐴', 17, -4);
+    ctx.font = '15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(cv.trade ? '🐪' : '🐴', 17, -4);
     ctx.restore();
-    if (cv.supply) { // ne taşıdığı ve nereye gittiği başında yazsın
+    if (cv.supply || cv.trade) { // ne taşıdığı ve nereye gittiği başında yazsın
       ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(cv.icon, cv.x, cv.y - 32);
-      ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = '#c8e0a8';
-      ctx.fillText('→ ' + cv.toName, cv.x, cv.y - 44);
+      ctx.fillText(cv.trade && cv.leg ? '🪙' : cv.icon, cv.x, cv.y - 32);
+      ctx.font = 'bold 10px sans-serif'; ctx.fillStyle = cv.trade ? '#ffd97e' : '#c8e0a8';
+      ctx.fillText('→ ' + (cv.trade ? (cv.leg ? cv.from : 'Tüccar') : cv.toName), cv.x, cv.y - 44);
     }
     if (cv.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${cv.flash * 4})`; ctx.beginPath(); ctx.ellipse(cv.x, cv.y - 8, 20, 12, 0, 0, TAU); ctx.fill(); }
     if (cv.hp < cv.maxHp) {
@@ -7872,12 +8171,14 @@ function render() {
   drawWeather(); // yağmur/kar/sis/fırtına katmanı (ekran uzayı)
 
   // gece karanlığı + ışık kaynakları (inde her zaman zifiri)
-  const dark = G.caveRun ? 0.66 : (G.night ? Math.min(1, Math.min(G.dayT / 6, (DAYLEN.night - G.dayT) / 6)) * 0.52 : 0);
+  // İnde karanlık 0.66'dan 0.5'e indi: taş dokusu ve oda/koridor ayrımı görünsün
+  // (referans zindanlar loş değil, aydınlık; atmosferi meşale ışığı veriyor).
+  const dark = G.caveRun ? 0.5 : (G.night ? Math.min(1, Math.min(G.dayT / 6, (DAYLEN.night - G.dayT) / 6)) * 0.52 : 0);
   if (dark > 0 && lightCv) {
     const L = lightCv.getContext('2d');
     L.setTransform(1, 0, 0, 1, 0, 0);
     L.clearRect(0, 0, VW, VH);
-    L.fillStyle = `rgba(12,16,50,${dark})`;
+    L.fillStyle = G.caveRun ? `rgba(26,14,52,${dark})` : `rgba(12,16,50,${dark})`;
     L.fillRect(0, 0, VW, VH);
     L.globalCompositeOperation = 'destination-out';
     const punch = (lx, ly, r, a) => {
@@ -7886,7 +8187,8 @@ function render() {
       L.fillStyle = g2; L.beginPath(); L.arc(lx, ly, r, 0, TAU); L.fill();
     };
     if (G.caveRun) {
-      for (const t of (G.caveTorches || [])) punch(t.x - cx, t.y - cy - 20, 165, 0.7); // duvar meşaleleri
+      for (const t of (G.caveTorches || [])) punch(t.x - cx, t.y - cy - 20, 195, 0.8); // duvar meşaleleri
+      for (const k of (G.caveCrystals || [])) punch(k.x - cx, k.y - cy - 10, 120, 0.5); // kristal ışığı
       if (!G.dead) punch(G.player.x - cx, G.player.y - cy - 20, 230, 0.95); // meşale
       const cc = G.structures.find(s2 => s2.kind === 'cavechest' && s2.alive);
       if (cc) punch(cc.x - cx, cc.y - cy - 10, 110, 0.6);
