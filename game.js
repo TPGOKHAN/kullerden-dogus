@@ -339,14 +339,39 @@ const PATROLS = [
 // Her düzen 8 noktadan ibaret; kale/karargâh dikdörtgenleri merkezden türetilir.
 const BUILTIN_MAPS = [
   { campfire: { x: 700, y: 1600 }, forest: { x: 1750, y: 720 }, quarry: { x: 1500, y: 2550 }, ruins: { x: 2450, y: 1500 },
-    merchant: { x: 2520, y: 2350 }, camp1: { x: 3350, y: 800 }, fort: { x: 4150, y: 2450 }, legion: { x: 3850, y: 430 }, cave: { x: 2900, y: 1950 } },
+    merchant: { x: 2520, y: 2350 }, camp1: { x: 3020, y: 1010 }, fort: { x: 4150, y: 2450 }, legion: { x: 3900, y: 400 }, cave: { x: 2900, y: 1950 } },
   { campfire: { x: 680, y: 900 }, forest: { x: 2250, y: 420 }, quarry: { x: 1350, y: 2250 }, ruins: { x: 2400, y: 1650 },
-    merchant: { x: 1850, y: 2750 }, camp1: { x: 3550, y: 2450 }, fort: { x: 4100, y: 950 }, legion: { x: 3650, y: 1650 }, cave: { x: 2900, y: 2100 } },
-  { campfire: { x: 720, y: 2300 }, forest: { x: 1450, y: 650 }, quarry: { x: 2650, y: 2800 }, ruins: { x: 2300, y: 1350 },
-    merchant: { x: 3300, y: 2000 }, camp1: { x: 2950, y: 520 }, fort: { x: 4200, y: 1150 }, legion: { x: 3950, y: 2650 }, cave: { x: 1700, y: 1750 } },
+    merchant: { x: 1780, y: 2780 }, camp1: { x: 3400, y: 2600 }, fort: { x: 4150, y: 830 }, legion: { x: 3620, y: 1780 }, cave: { x: 2860, y: 2120 } },
+  { campfire: { x: 720, y: 2300 }, forest: { x: 1450, y: 650 }, quarry: { x: 2620, y: 2830 }, ruins: { x: 2300, y: 1350 },
+    merchant: { x: 3120, y: 1900 }, camp1: { x: 2950, y: 520 }, fort: { x: 4250, y: 1180 }, legion: { x: 4000, y: 2700 }, cave: { x: 1700, y: 1750 } },
 ];
 const CAVE = { x: 2900, y: 1950 }; // Karanlık İn (mini zindan girişi)
+// Yerleşkeler birbirine girmesin: çok yakın olan nokta, komşusundan uzağa itilir.
+// Deterministik (aynı girdi → aynı çıktı), böylece co-op'ta iki bilgisayar aynı haritayı kurar.
+function spaceOutSites(g) {
+  const MIN = { campfire: 900, camp1: 620, fort: 780, legion: 800, merchant: 380, ruins: 380, forest: 380, quarry: 380, cave: 340 };
+  const keys = ['campfire', 'fort', 'legion', 'camp1', 'ruins', 'merchant', 'forest', 'quarry', 'cave'].filter(k => g[k]);
+  for (let tur = 0; tur < 6; tur++) {
+    let itildi = false;
+    for (let i = 0; i < keys.length; i++) {
+      for (let j = i + 1; j < keys.length; j++) {
+        const a = g[keys[i]], b = g[keys[j]];
+        const gerek = Math.max(MIN[keys[i]] || 380, MIN[keys[j]] || 380);
+        const d = Math.hypot(b.x - a.x, b.y - a.y);
+        if (d >= gerek || d < 1) continue;
+        // önceki (daha öncelikli) nokta yerinde kalır, sonraki itilir
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        b.x = Math.round(clamp(a.x + Math.cos(ang) * gerek, 260, WORLD.w - 260));
+        b.y = Math.round(clamp(a.y + Math.sin(ang) * gerek, 260, WORLD.h - 260));
+        itildi = true;
+      }
+    }
+    if (!itildi) break;
+  }
+  return g;
+}
 function applyGeography(g) {
+  g = spaceOutSites(g);
   Object.assign(CAMPFIRE, g.campfire);
   Object.assign(FOREST, g.forest); Object.assign(QUARRY, g.quarry);
   Object.assign(RUINS, g.ruins); Object.assign(MERCHANT, g.merchant);
@@ -775,13 +800,18 @@ function genWorld() {
   G.props.push({ kind: 'cave', x: CAVE.x, y: CAVE.y });
 
   // Kaynak noktaları — bölgesel kümeler (odun kuzeyde, taş güneyde, hurda merkezde)
+  // Yasak bölgeler yerleşkelerin SON hâline göre: köy kademe 3'te sur 445'e çıkıyor,
+  // karakol arsaları merkezden ~165 uzağa açılıyor. Dar tutulursa kaynaklar sonradan
+  // sur içinde kalıyor ve birimler onlara takılıyor.
   const blocked = (x, y) =>
     x > OVERWORLD_W - 60 || // mağara şeridine kaynak düşmesin
-    x < shoreX(y) + 55 || dist(x, y, CAMPFIRE.x, CAMPFIRE.y) < 320 ||
-    dist(x, y, CAMP1.x, CAMP1.y) < 280 || dist(x, y, MERCHANT.x, MERCHANT.y) < 140 ||
-    (x > FORT.x0 - 70 && x < FORT.x1 + 70 && y > FORT.y0 - 70 && y < FORT.y1 + 70) ||
-    (x > LEG.x0 - 70 && x < LEG.x1 + 70 && y > LEG.y0 - 70 && y < LEG.y1 + 70) ||
-    SIEGE_SITES.some(st => dist(x, y, st.x, st.y) < 150);
+    x < shoreX(y) + 55 ||
+    dist(x, y, CAMPFIRE.x, CAMPFIRE.y) < VILLAGE_CLEAR ||
+    dist(x, y, CAMP1.x, CAMP1.y) < OUTPOST_CLEAR ||
+    dist(x, y, MERCHANT.x, MERCHANT.y) < 180 ||
+    (x > FORT.x0 - 140 && x < FORT.x1 + 140 && y > FORT.y0 - 140 && y < FORT.y1 + 140) ||
+    (x > LEG.x0 - 140 && x < LEG.x1 + 140 && y > LEG.y0 - 140 && y < LEG.y1 + 140) ||
+    SIEGE_SITES.some(st => dist(x, y, st.x, st.y) < 200);
   function scatterAt(kind, n, cx2, cy2, radius) {
     let tries = 0;
     while (n > 0 && tries++ < 1200) {
@@ -793,8 +823,8 @@ function genWorld() {
       n--;
     }
   }
-  scatterAt('tree', 8, CAMPFIRE.x + 260, CAMPFIRE.y - 140, 260);  // köy yakını (tutorial)
-  scatterAt('rock', 3, CAMPFIRE.x + 320, CAMPFIRE.y + 220, 200);
+  scatterAt('tree', 9, CAMPFIRE.x + 660, CAMPFIRE.y - 200, 240);  // köy yakını (tutorial) — sur büyüse de dışarıda kalır
+  scatterAt('rock', 4, CAMPFIRE.x + 700, CAMPFIRE.y + 280, 220);
   scatterAt('tree', 34, FOREST.x, FOREST.y, 480);                 // Balta Ormanı
   scatterAt('rock', 22, QUARRY.x, QUARRY.y, 420);                 // Taş Ocağı
   scatterAt('tree', 6, QUARRY.x - 300, QUARRY.y - 250, 180);
@@ -877,11 +907,24 @@ function genWorld() {
   // Köy suru halkası (doğu boşluğu = kapı) — köy genişledikçe sur da genişler
   rebuildPalisade();
 }
+// Yerleşke temiz alanları: kaynaklar bu yarıçapın dışına düşer (yerleşke büyüse de içeride kalmasınlar)
+const VILLAGE_CLEAR = PAL.r + EXPANSIONS.length * 80 + 100;  // kademe 3 suru (445) + pay
+const OUTPOST_CLEAR = OP_WALL.r + 200;                        // kazık suru + karakol arsaları
+// Yerleşkenin içinde kalmış kaynakları kaldır (sur genişleyince birimler bunlara takılıyordu).
+// Diziden ÇIKARMIYORUZ: co-op senkronu düğümleri indeksle eşliyor, sıra bozulmamalı.
+function clearNodesInside(cx, cy, r) {
+  for (const n of G.nodes) {
+    if (n.removed) continue;
+    if (dist(n.x, n.y, cx, cy) > r) continue;
+    n.removed = true; n.alive = false; n.respT = Infinity;
+  }
+}
 // Sur yarıçapı köy kademesine bağlı; kapı boşluğu ~40px sabit kalsın diye açı ölçeklenir
 const palR = () => PAL.r + (G.villageTier - 1) * 80;
 const palGapA = () => PAL.gapA * PAL.r / palR();
 function rebuildPalisade() {
   const r = palR();
+  if (G.palisade.built) clearNodesInside(CAMPFIRE.x, CAMPFIRE.y, r + 26); // sur içinde ağaç/kaya kalmasın
   PAL_GATE.x = CAMPFIRE.x + r; PAL_GATE.y = CAMPFIRE.y;
   G.palStakes.length = 0;
   // adım açısal değil MESAFE bazlı: sur büyüse de ayak araları sabit kalır (boşluk oluşmaz)
@@ -949,6 +992,8 @@ const JAIL_OFFS = { camp1: [150, 70], fort: [180, 120], legion: [180, 120] };
 const jailPos = site => { const O = OUTPOSTS[site], o = JAIL_OFFS[site] || [150, 70]; return { x: O.x + o[0], y: O.y + o[1] }; };
 const jailCmds = site => (G.prisoners[site] || []).filter(m => m.cmd);
 function rebuildOutpostWalls() {
+  for (const [site2, op2] of Object.entries(G.outposts)) // karakol suru içindeki kaynaklar da kalkar
+    if (op2 && op2.wall && !op2.isVillage && OUTPOSTS[site2]) clearNodesInside(OUTPOSTS[site2].x, OUTPOSTS[site2].y, OP_WALL.r + 26);
   G.opStakes.length = 0;
   G.structures = G.structures.filter(s => s.kind !== 'owgate');
   for (const [site, op] of Object.entries(G.outposts)) {
@@ -3864,7 +3909,7 @@ function doAttack() {
     spawnParts(best.x, best.y - 16, 6, { colors: NODE_FX[best.kind], v: 70, life: 0.5, g: 180, r: 3.5 });
     addFloater(best.x + rr(-8, 8), best.y - 30, '✦', '#fff');
     if (best.hp <= 0) {
-      best.alive = false; best.respT = NODE_DEF[best.kind].respawn;
+      best.alive = false; best.respT = best.removed ? Infinity : NODE_DEF[best.kind].respawn;
       if (coopSlave()) coopSend('nkill', { i: G.nodes.indexOf(best) }); // yoldaşımda da kırılsın
       let y = { ...NODE_DEF[best.kind].yield };
       if (best.kind === 'tree' && G.built.sawmill >= 2) y.wood += 1;
