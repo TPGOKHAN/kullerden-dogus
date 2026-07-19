@@ -66,6 +66,14 @@ const NET_ERR = {
   'Load failed': 'Bağlantı yok — internetini kontrol et',
 };
 const netErrMsg = e => NET_ERR[e && e.message] || (e && e.message) || 'Bağlantı hatası';
+// Süre biçimi: 1 saatten uzunsa "2:05:30", kısaysa "9:59" (600:00 gibi belirsiz gösterim olmasın)
+const fmtDur = s => {
+  s = Math.max(0, Math.round(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0
+    ? h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')
+    : m + ':' + String(sec).padStart(2, '0');
+};
 
 let SAVED0 = null;
 try { SAVED0 = VISIT ? VISIT.village : JSON.parse(localStorage.getItem(slotKey(SAVE_SLOT))); } catch (e) { }
@@ -2139,7 +2147,7 @@ function renderPanel() {
       const m = f.meta || {};
       const left = Math.max(0, BAL.visitSec - (f.used || 0));
       const desc = 'Sv.' + (m.level || 1) + ' · Gün ' + (m.day || 1) + (m.prov ? ' · ' + m.prov : '') + ' · ' + ago +
-        (f.has_village ? ' · ziyaret hakkın: ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') : ' · köyü henüz bulutta değil');
+        (f.has_village ? ' · ziyaret hakkın: ' + fmtDur(left) : ' · köyü henüz bulutta değil (biraz oynasın)');
       pitem('🧑‍🌾 ' + f.name, desc, null, '🏠 Ziyaret', !VISIT && !ISLAND && f.has_village && left > 0, () => visitFriend(f));
     }
     // Dostluk Adası
@@ -4375,8 +4383,7 @@ function update(dt) {
     if (G.visitLeft <= 0) endVisit();
     const vt = $('visitTime');
     if (vt) {
-      const s2 = Math.max(0, Math.ceil(G.visitLeft));
-      const txt = '⏳ ' + Math.floor(s2 / 60) + ':' + String(s2 % 60).padStart(2, '0');
+      const txt = '⏳ ' + fmtDur(G.visitLeft);
       if (vt.textContent !== txt) vt.textContent = txt;
     }
   }
