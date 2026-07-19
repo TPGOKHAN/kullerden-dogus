@@ -268,10 +268,10 @@ const SFX = {
 // Doğudaki 4800+ şeridi prosedürel mağara odası için ayrılmıştır (haritada görünmez)
 // Mağara şeridi doğuda: zindan 3 kat büyüdüğü için dünya genişliği ona göre.
 // (Bölge haritası OVERWORLD_W'yi kullandığından üst dünya görüntüsü değişmez.)
-const WORLD = { w: 9100, h: 3200 };
-let OVERWORLD_W = 4800; // ada modunda tüm haritaya genişler
+const WORLD = { w: 10400, h: 3800 };
+let OVERWORLD_W = 6000; // üst dünya (yerleşkeler sığsın diye büyütüldü); ada modunda tüm haritaya genişler
 // Zindan ~3 kat büyütüldü (oda ve koridor genişlikleri ordu geçemiyordu)
-const CAVE_AREA = { x0: 4960, y0: 130, w: 4020, h: 2940 }; // prosedürel dungeon alanı
+const CAVE_AREA = { x0: 6150, y0: 130, w: 4020, h: 3540 }; // prosedürel dungeon alanı
 const CAMPFIRE = { x: 700, y: 1600 };                 // Köy (güneybatı, su kıyısına yakın)
 const FOREST = { x: 1750, y: 720 };                   // Balta Ormanı (odun bölgesi)
 const QUARRY = { x: 1500, y: 2550 };                  // Taş Ocağı (taş bölgesi)
@@ -374,14 +374,27 @@ const siteFoot = () => ({
   legion:   { hw: 430 + 2 * KEEP_PAD, hh: 255 + 2 * KEEP_PAD },       // 730 x 555
   merchant: { r: 170 }, ruins: { r: 210 }, forest: { r: 280 }, quarry: { r: 260 }, cave: { r: 170 },
 });
-// Merkezden VERİLEN YÖNDEKİ ayak izi (kutularda kenara olan uzaklık).
-// Çevrel daire kullanmak kaleleri gereksiz yere 900px'lik toplara çevirip
-// haritayı dağıtıyordu; yön bazlı ölçü hem doğru hem cimri.
+// Merkezden VERİLEN YÖNDEKİ ayak izi (kutularda kenara olan uzaklık) — itme
+// mesafesini hesaplarken kullanılır.
 function siteReach(k, ang) {
   const f = siteFoot()[k] || { r: 260 };
   if (f.r) return f.r;
   const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang));
   return Math.min(c > 1e-4 ? f.hw / c : 1e9, sn > 1e-4 ? f.hh / sn : 1e9);
+}
+// İki yerleşkenin GERÇEK açıklığı (negatifse iç içeler).
+// Işın tabanlı ölçü kutuların KÖŞELERİNDE iyimser davranıyordu: ışının kutudan
+// çıkış noktasına bakıyor, hâlbuki daire köşeye daha yakın olabiliyor. Bu yüzden
+// "0 çakışma" raporlanan bir düzende sur, taş duvarın içinden geçiyordu.
+function siteGap(ka, a, kb, b) {
+  const F = siteFoot(), fa = F[ka] || { r: 260 }, fb = F[kb] || { r: 260 };
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const kutuNokta = (hw, hh, px, py) =>
+    Math.hypot(Math.max(Math.abs(px) - hw, 0), Math.max(Math.abs(py) - hh, 0));
+  if (fa.r && fb.r) return Math.hypot(dx, dy) - fa.r - fb.r;
+  if (fa.r) return kutuNokta(fb.hw, fb.hh, -dx, -dy) - fa.r;
+  if (fb.r) return kutuNokta(fa.hw, fa.hh, dx, dy) - fb.r;
+  return Math.max(Math.abs(dx) - fa.hw - fb.hw, Math.abs(dy) - fa.hh - fb.hh);
 }
 function spaceOutSites(g) {
   const PAY = 90;   // yerleşkeler arası nefes payı
@@ -395,9 +408,10 @@ function spaceOutSites(g) {
       for (let j = i + 1; j < keys.length; j++) {
         const a = g[keys[i]], b = g[keys[j]];
         const ang = Math.atan2(b.y - a.y, b.x - a.x);
-        const gerek = siteReach(keys[i], ang) + siteReach(keys[j], ang + Math.PI) + PAY;
+        const acik = siteGap(keys[i], a, keys[j], b);        // GERÇEK açıklık
+        if (acik >= PAY) continue;
         const d = Math.hypot(b.x - a.x, b.y - a.y);
-        if (d >= gerek) continue;
+        const gerek = d + (PAY - acik) + 20;                 // eksik kadar aç (+ pay)
         const a2 = d < 1 ? (i * 1.7 + j) : ang;   // üst üsteyse deterministik bir yöne aç
         // Normalde SONRAKİ nokta itilir. Ama itilecek yer harita sınırının
         // dışına düşüyorsa (kırpılıp yerinde sayardı) bunun yerine ÖNCEKİ nokta
@@ -862,7 +876,10 @@ function genWorld() {
   G.props.push({ kind: 'column', x: RUINS.x - 110, y: RUINS.y - 60 }, { kind: 'column', x: RUINS.x + 90, y: RUINS.y + 40 }, { kind: 'columnFallen', x: RUINS.x - 40, y: RUINS.y + 110 });
   G.props.push({ kind: 'column', x: RUINS.x + 30, y: RUINS.y - 130 });
   G.props.push({ kind: 'boat', x: shoreX(1700) - 55, y: 1700 });
-  G.props.push({ kind: 'tent', x: CAMP1.x - 105, y: CAMP1.y - 65 }, { kind: 'tent', x: CAMP1.x + 100, y: CAMP1.y - 55 }, { kind: 'tent', x: CAMP1.x - 70, y: CAMP1.y + 85 });
+  // Çadırlar barbarların: kamp fethedilince kalkarlar (site etiketiyle)
+  G.props.push({ kind: 'tent', site: 'camp1', x: CAMP1.x - 105, y: CAMP1.y - 65 },
+    { kind: 'tent', site: 'camp1', x: CAMP1.x + 100, y: CAMP1.y - 55 },
+    { kind: 'tent', site: 'camp1', x: CAMP1.x - 70, y: CAMP1.y + 85 });
   G.props.push({ kind: 'trader', x: MERCHANT.x, y: MERCHANT.y });
   G.props.push({ kind: 'cave', x: CAVE.x, y: CAVE.y });
 
@@ -2003,7 +2020,7 @@ function genIslandExtras() {
     const site = 'icamp' + i;
     ISL_CAMPS.push({ site, x, y });
     G.structures.push({ kind: 'itotem', site, x, y, hp: Math.round(420 * ms), maxHp: Math.round(420 * ms), alive: true });
-    G.props.push({ kind: 'tent', x: x - 100, y: y - 60 }, { kind: 'tent', x: x + 95, y: y + 70 });
+    G.props.push({ kind: 'tent', site, x: x - 100, y: y - 60 }, { kind: 'tent', site, x: x + 95, y: y + 70 });
     const pool = ['barb', 'barb', 'archer', 'shieldbarb', 'brute', 'shaman', 'barb'];
     for (let k2 = 0; k2 < pool.length; k2++) spawnEnemy(pool[k2], x + rr(-170, 170), y + rr(-130, 160), site);
   });
@@ -4547,6 +4564,7 @@ function computeNear() {
     if (dd < nd) { nd = dd; G.nearThing = { building: b, label: B.icon + ' ' + B.name }; }
   }
   for (const st of SIEGE_SITES) {
+    if (G.outposts[st.id]) continue;   // kale fethedildi: kendi kapına kuşatma kurulmaz
     const dd = dist(p.x, p.y, st.x, st.y);
     if (dd < 120 && dd - 30 < nd) { nd = dd - 30; G.nearThing = { site: st, label: '⚔️ Kuşatma Kampı' }; }
   }
@@ -8563,7 +8581,11 @@ function render() {
       } });
   }
   for (const s of G.structures) list.push({ y: s.y, f: () => drawStructure(s) });
-  for (const pr of G.props) if (vis(pr.x, pr.y)) list.push({ y: pr.y, f: () => drawProp(pr) });
+  for (const pr of G.props) {
+    // fethedilen barbar kampının çadırları sökülür (ada totemleri de aynı kural)
+    if (pr.site && (G.outposts[pr.site] || (pr.site === 'camp1' && G.camp1Destroyed))) continue;
+    if (vis(pr.x, pr.y)) list.push({ y: pr.y, f: () => drawProp(pr) });
+  }
   for (const e of G.enemies) {
     if (e.type === 'wram') {
       // düşman koçbaşısı: mürettebatlı kuşatma aracı
@@ -8673,7 +8695,9 @@ function render() {
     ctx.fillText((w.name || 'Yaralı asker') + ' (yaralı)', w.x, w.y - 30 + bob);
   } });
   for (const st of SIEGE_SITES) {
-    list.push({ y: st.y, f: () => drawSiegeSite(st) });
+    // Kale fethedilince kuşatma kampının çemberi/bayrağı kalkar — savaş bitti,
+    // kendi toprağının ortasında düşman kuşatma işareti durmasın.
+    if (!G.outposts[st.id]) list.push({ y: st.y, f: () => drawSiegeSite(st) });
     const S = G.sieges[st.id];
     const engBar = (en, x, y) => { // savunucular vurduysa şantiye can barı
       if (en.hp === undefined || en.hp >= en.maxHp) return;
