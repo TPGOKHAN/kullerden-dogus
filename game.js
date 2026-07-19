@@ -961,6 +961,47 @@ function orbitTo(x, y, rg, targetA) {
   return { wx: rg.cx + Math.cos(na) * (rg.r + 46), wy: rg.cy + Math.sin(na) * (rg.r + 46) };
 }
 const orbitToGap = (x, y, rg) => orbitTo(x, y, rg, rg.gap);
+// Düz çizgi bir dikdörtgeni kesiyor mu? (kale/lejyon taş duvarları için)
+function segHitsRect(x1, y1, x2, y2, r) {
+  if (Math.max(x1, x2) < r.x || Math.min(x1, x2) > r.x + r.w ||
+      Math.max(y1, y2) < r.y || Math.min(y1, y2) > r.y + r.h) return false;
+  const ic = (px, py) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  if (ic(x1, y1) || ic(x2, y2)) return true;
+  const kesis = (ax, ay, bx, by, cx, cy, dx, dy) => {
+    const d1 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    const d2 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
+    const d3 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx);
+    const d4 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx);
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+  };
+  return kesis(x1, y1, x2, y2, r.x, r.y, r.x + r.w, r.y) ||
+         kesis(x1, y1, x2, y2, r.x + r.w, r.y, r.x + r.w, r.y + r.h) ||
+         kesis(x1, y1, x2, y2, r.x + r.w, r.y + r.h, r.x, r.y + r.h) ||
+         kesis(x1, y1, x2, y2, r.x, r.y + r.h, r.x, r.y);
+}
+// Kale/lejyon TAŞ DUVARLARI: yol bunlardan geçiyorsa duvarın köşesinden dolaş.
+// (wallRings yalnız dairesel surları biliyordu; birimler dikdörtgen duvarlara yapışıp kalıyordu.)
+function rectRoute(x, y, tx, ty) {
+  const PAD = 34;
+  for (const w of G.walls) {
+    if (dist(x, y, w.x + w.w / 2, w.y + w.h / 2) > 1400) continue; // uzaktakine bakma
+    const r = { x: w.x - PAD, y: w.y - PAD, w: w.w + PAD * 2, h: w.h + PAD * 2 };
+    if (!segHitsRect(x, y, tx, ty, r)) continue;
+    // Köşeler dikdörtgenin bir tık DIŞINDA olmalı; sınırda kalırsa "duvarın içinde" sayılıp elenirler
+    const D = 14;
+    const koseler = [[r.x - D, r.y - D], [r.x + r.w + D, r.y - D], [r.x + r.w + D, r.y + r.h + D], [r.x - D, r.y + r.h + D]];
+    let en = null, ed = 1e9, yedek = null, yd = 1e9;
+    for (const [kx, ky] of koseler) {
+      const d = dist(x, y, kx, ky) + dist(kx, ky, tx, ty);
+      if (d < yd) { yd = d; yedek = [kx, ky]; }
+      if (segHitsRect(x, y, kx, ky, r)) continue;      // köşeye giderken de duvarı kesmemeli
+      if (d < ed) { ed = d; en = [kx, ky]; }
+    }
+    const sec = en || yedek;                            // hiçbiri temiz değilse (duvarın içindeyiz) en kısa köşe
+    if (sec) return { wx: sec[0], wy: sec[1] };
+  }
+  return null;
+}
 // Hedefe düz gidiş bir halkayı kesiyorsa rota üret.
 // Dönüş: null (düz git) | {wx,wy} ara nokta | {attackVillageGate, ring} | {attackGate, ring} (düşman + sağlam kapı → kır)
 function wallRoute(x, y, tx, ty, isEnemy) {
@@ -987,7 +1028,7 @@ function wallRoute(x, y, tx, ty, isEnemy) {
     return orbitToGap(x, y, rg) ||
       { wx: rg.cx + Math.cos(rg.gap) * (rg.r - 60), wy: rg.cy + Math.sin(rg.gap) * (rg.r - 60) };
   }
-  return null;
+  return rectRoute(x, y, tx, ty); // dairesel sur yoksa taş duvarları dolaş
 }
 // Zindan kafesi: esir komutanların tutulduğu yer (site merkezine göre sabit konum)
 const JAIL_OFFS = { camp1: [150, 70], fort: [180, 120], legion: [180, 120] };
@@ -2044,9 +2085,16 @@ function cmdIndepIdle(c, dt) {
   const ang = Math.atan2(wy - c.y, wx - c.x);
   const rt = wallRoute(c.x, c.y, wx, wy, false);
   const tx2 = rt && rt.wx !== undefined ? rt.wx : wx, ty2 = rt && rt.wx !== undefined ? rt.wy : wy;
-  const a2 = Math.atan2(ty2 - c.y, tx2 - c.x);
+  let a2 = Math.atan2(ty2 - c.y, tx2 - c.x);
+  if ((c.sideT || 0) > 0) { c.sideT -= dt; a2 += c.sideDir * 1.35; } // takıldıysa bir süre yandan dolan
+  const ox = c.x, oy = c.y;
   const [nx2, ny2] = collide(c.x + Math.cos(a2) * spd * dt, c.y + Math.sin(a2) * spd * dt, 13);
   c.x = nx2; c.y = ny2; c.walk += dt * 9; c.dir = ang;
+  // takılma dedektörü: yerinde sayıyorsa yönü kaydır (duvar/bina köşesinde kalmasın)
+  if (dist(ox, oy, c.x, c.y) < spd * dt * 0.35) {
+    c.stuckT = (c.stuckT || 0) + dt;
+    if (c.stuckT > 0.5 && (c.sideT || 0) <= 0) { c.stuckT = 0; c.sideT = 1.6; c.sideDir = rng() < 0.5 ? 1 : -1; }
+  } else c.stuckT = 0;
 }
 // Öz ordu: komutanı izler, yakınındaki düşmanla savaşır; bağımsızken keseden asker alınır
 function cmdTroopsUpdate(c, dt) {
@@ -2087,6 +2135,11 @@ function cmdTroopsUpdate(c, dt) {
     }
   });
 }
+// Kapı bakımı 60 sn'de bir yapılabilir (oto ve elle onarım aynı sayacı paylaşır)
+const GATE_CD = 60;
+const gateReady = key => G.t >= (G.gateCd && G.gateCd[key] || 0);
+const gateWait = key => Math.max(0, Math.ceil((G.gateCd && G.gateCd[key] || 0) - G.t));
+function gateUsed(key) { G.gateCd = G.gateCd || {}; G.gateCd[key] = G.t + GATE_CD; }
 // ---------- OTO YÖNETİM: her üs kendi ambarıyla inşa/tamir/yükseltme/asker işlerini görür ----------
 function autoPayFly(s, need, paid, tx, ty) { // ambardan şantiyeye kaynak uçur — 2: bitti, 1: aktı, 0: kaynak yok
   let moved = false;
@@ -2177,12 +2230,12 @@ function autoSite(s) {
   // 2) KAPILAR: kırık olan hemen onarılır, hasarlısı (%70 altı) beklemeden tamir edilir
   if (s.id === 'village' && G.palisade.built) {
     const gt = G.palisade.gate;
-    if (!gt.alive || gt.hp < gt.maxHp * 0.7) {
+    if ((!gt.alive || gt.hp < gt.maxHp * 0.7) && gateReady('village')) {
       const kirikti = !gt.alive;
       G.autoGatePaid = G.autoGatePaid || {};
       const r2 = autoPayFly(s, bcost(PAL.repair), G.autoGatePaid, PAL_GATE.x, PAL_GATE.y);
       if (r2 === 2) {
-        G.autoGatePaid = {}; gt.hp = gt.maxHp; gt.alive = true;
+        G.autoGatePaid = {}; gt.hp = gt.maxHp; gt.alive = true; gateUsed('village');
         SFX.build(); autoSay('village', kirikti ? 'köy kapısı onarıldı 🚪' : 'köy kapısı tamir edildi 🔧'); save();
       }
       if (r2) return true;
@@ -2190,12 +2243,12 @@ function autoSite(s) {
   }
   if (s.op && s.op.wall) { // karakol sur kapısı: kırık ya da yıpranmış
     const owg = G.structures.find(x2 => x2.kind === 'owgate' && x2.site === s.id);
-    if (owg && (!owg.alive || owg.hp < owg.maxHp * 0.7)) {
+    if (owg && (!owg.alive || owg.hp < owg.maxHp * 0.7) && gateReady(s.id)) {
       const kirikti2 = !owg.alive;
       s.op.gatePaid = s.op.gatePaid || {};
       const r3 = autoPayFly(s, bcost(OP_WALL.repair), s.op.gatePaid, owg.x, owg.y);
       if (r3 === 2) {
-        delete s.op.gatePaid; owg.alive = true; owg.hp = owg.maxHp; s.op.wallGateHp = owg.maxHp;
+        delete s.op.gatePaid; owg.alive = true; owg.hp = owg.maxHp; s.op.wallGateHp = owg.maxHp; gateUsed(s.id);
         SFX.build(); autoSay(s.id, kirikti2 ? 'sur kapısı onarıldı 🚪' : 'sur kapısı tamir edildi 🔧'); save();
       }
       if (r3) return true;
@@ -2203,13 +2256,13 @@ function autoSite(s) {
   }
   if (s.op && (s.id === 'fort' || s.id === 'legion')) { // fethedilen kalenin kendi kapısı
     const og = G.structures.find(x2 => x2.kind === (s.id === 'fort' ? 'gate' : 'lgate'));
-    if (og && (!og.alive || og.hp < og.maxHp * 0.7)) {
+    if (og && (!og.alive || og.hp < og.maxHp * 0.7) && gateReady(s.id + '_kale')) {
       const kirikti3 = !og.alive;
       s.op.kgPaid = s.op.kgPaid || {};
       const c5 = bcost(s.id === 'fort' ? { wood: 60, stone: 40 } : { stone: 80, iron: 12 });
       const r5 = autoPayFly(s, c5, s.op.kgPaid, og.x, og.y);
       if (r5 === 2) {
-        delete s.op.kgPaid; og.alive = true; og.hp = og.maxHp;
+        delete s.op.kgPaid; og.alive = true; og.hp = og.maxHp; gateUsed(s.id + '_kale');
         SFX.build(); autoSay(s.id, kirikti3 ? 'kale kapısı onarıldı 🚪' : 'kale kapısı tamir edildi 🔧'); save();
       }
       if (r5) return true;
@@ -2795,6 +2848,17 @@ function renderPanel() {
       }
       SFX.coin(); save(); renderPanel();
     }));
+    if (!VISIT) pitem('⬇ Hepsini al', 'Ambardaki tüm kaynakları cebine aktar', null, 'Al', RES_DEF.some(([k]) => k !== 'gold' && k !== 'gems' && Math.floor(op2.stock[k] || 0) > 0), () => {
+      let t = 0;
+      for (const [k] of RES_DEF) {
+        if (k === 'gold' || k === 'gems') continue;
+        const n = Math.floor(op2.stock[k] || 0);
+        if (n <= 0) continue;
+        op2.stock[k] -= n; G.res[k] = (G.res[k] || 0) + n; flashChip(k); t += n;
+      }
+      if (t) { SFX.coin(); addFloater(G.player.x, G.player.y - 40, '⬇ ' + t + ' 🏳️→🎒', '#c8e0a8', 14); save(); }
+      renderPanel();
+    });
     if (!VISIT) pitem('⬆ Hepsini bırak', 'Cebindeki tüm inşaat kaynaklarını bu ambara aktar', null, 'Aktar', true, () => {
       let toplam = 0;
       for (const [k] of RES_DEF) {
@@ -2832,6 +2896,32 @@ function renderPanel() {
           '<button class="garBtn stockBtn" data-k="' + k + '" data-op="put" ' + (pk && s2 < cap ? '' : 'disabled') + '>⬆ Bırak</button>') + '</div>';
     }
     elPanelBody.innerHTML = html;
+    if (!VISIT) { // toplu işlemler
+      pitem('⬇ Hepsini al', 'Depodaki tüm kaynakları cebine aktar', null, 'Al', RES_DEF.some(([k]) => k !== 'gold' && k !== 'gems' && Math.floor(G.stock[k] || 0) > 0), () => {
+        let t = 0;
+        for (const [k] of RES_DEF) {
+          if (k === 'gold' || k === 'gems') continue;
+          const n = Math.floor(G.stock[k] || 0);
+          if (n <= 0) continue;
+          G.stock[k] -= n; G.res[k] = (G.res[k] || 0) + n; flashChip(k); t += n;
+          if (ISLAND) { const sa = G.islOps.stockAdd = G.islOps.stockAdd || {}; sa[k] = (sa[k] || 0) - n; }
+        }
+        if (t) { SFX.coin(); addFloater(G.player.x, G.player.y - 40, '⬇ ' + t + ' 🏬→🎒', '#ffe9a8', 14); save(); }
+        renderPanel();
+      });
+      pitem('⬆ Hepsini bırak', 'Cebindeki inşaat kaynaklarını depoya koy', null, 'Bırak', RES_DEF.some(([k]) => k !== 'gold' && k !== 'gems' && Math.floor(G.res[k] || 0) > 0), () => {
+        let t = 0;
+        for (const [k] of RES_DEF) {
+          if (k === 'gold' || k === 'gems') continue;
+          const n = Math.min(Math.floor(G.res[k] || 0), cap - Math.floor(G.stock[k] || 0));
+          if (n <= 0) continue;
+          G.res[k] -= n; G.stock[k] = (G.stock[k] || 0) + n; t += n;
+          if (ISLAND) { const sa = G.islOps.stockAdd = G.islOps.stockAdd || {}; sa[k] = (sa[k] || 0) + n; islContrib('donated', n); }
+        }
+        if (t) { SFX.coin(); addFloater(G.player.x, G.player.y - 40, '⬆ ' + t + ' → 🏬', '#ffe9a8', 14); save(); }
+        renderPanel();
+      });
+    }
     elPanelBody.querySelectorAll('.stockBtn').forEach(el => el.addEventListener('click', () => {
       const k = el.dataset.k;
       if (el.dataset.op === 'take') {
@@ -3053,12 +3143,16 @@ function renderPanel() {
       } else {
         const owg = G.structures.find(x2 => x2.kind === 'owgate' && x2.site === s.site);
         if (owg && !owg.alive) {
-          pitem('🚪 Sur kapısını onar', 'Kapı kırık — karakol savunmasız!', OP_WALL.repair, 'Onar', canAfford(OP_WALL.repair),
-            () => { pay(OP_WALL.repair); owg.alive = true; owg.hp = owg.maxHp; op.wallGateHp = owg.maxHp; SFX.build(); toast('Sur kapısı onarıldı! 🚪'); save(); renderPanel(); });
+          const bk1 = gateWait(s.site);
+          pitem('🚪 Sur kapısını onar', 'Kapı kırık — karakol savunmasız!' + (bk1 ? ' · <b>ustalar ' + bk1 + 'sn sonra hazır</b>' : ''),
+            OP_WALL.repair, bk1 ? bk1 + 'sn' : 'Onar', !bk1 && canAfford(OP_WALL.repair),
+            () => { pay(OP_WALL.repair); owg.alive = true; owg.hp = owg.maxHp; op.wallGateHp = owg.maxHp; gateUsed(s.site); SFX.build(); toast('Sur kapısı onarıldı! 🚪'); save(); renderPanel(); });
         } else if (owg && owg.hp < owg.maxHp) {
           const gc3 = { wood: 20 };
-          pitem('🔧 Sur kapısını tamir et', Math.round(owg.hp) + '/' + owg.maxHp + ' HP', gc3, 'Tamir', canAfford(gc3),
-            () => { pay(gc3); owg.hp = owg.maxHp; op.wallGateHp = owg.maxHp; SFX.build(); toast('Kapı tamir edildi'); save(); renderPanel(); });
+          const bk2 = gateWait(s.site);
+          pitem('🔧 Sur kapısını tamir et', Math.round(owg.hp) + '/' + owg.maxHp + ' HP' + (bk2 ? ' · <b>' + bk2 + 'sn</b>' : ''),
+            gc3, bk2 ? bk2 + 'sn' : 'Tamir', !bk2 && canAfford(gc3),
+            () => { pay(gc3); owg.hp = owg.maxHp; op.wallGateHp = owg.maxHp; gateUsed(s.site); SFX.build(); toast('Kapı tamir edildi'); save(); renderPanel(); });
         }
       }
       // fethedilen kalenin kapısını onar: baskıncılar önce kapıyı kırmak zorunda kalır
@@ -3067,12 +3161,16 @@ function renderPanel() {
         const og = G.structures.find(x2 => x2.kind === gk);
         if (og && !og.alive) {
           const gc = bcost(s.site === 'fort' ? { wood: 60, stone: 40 } : { stone: 80, iron: 12 });
-          pitem('🚪 Kale kapısını onar', 'Sana açık, düşmana kapalı — baskıncılar önce kapıyı kırar', gc, 'Onar', canAfford(gc),
-            () => { pay(gc); og.alive = true; og.hp = og.maxHp; SFX.build(); toast('Kale kapısı onarıldı! 🚪'); save(); renderPanel(); });
+          const bk3 = gateWait(s.site + '_kale');
+          pitem('🚪 Kale kapısını onar', 'Sana açık, düşmana kapalı — baskıncılar önce kapıyı kırar' + (bk3 ? ' · <b>' + bk3 + 'sn</b>' : ''),
+            gc, bk3 ? bk3 + 'sn' : 'Onar', !bk3 && canAfford(gc),
+            () => { pay(gc); og.alive = true; og.hp = og.maxHp; gateUsed(s.site + '_kale'); SFX.build(); toast('Kale kapısı onarıldı! 🚪'); save(); renderPanel(); });
         } else if (og && og.alive && og.hp < og.maxHp) {
           const gc2 = bcost({ stone: 30 });
-          pitem('🔧 Kapıyı tamir et', Math.round(og.hp) + '/' + og.maxHp + ' HP', gc2, 'Tamir', canAfford(gc2),
-            () => { pay(gc2); og.hp = og.maxHp; SFX.build(); toast('Kapı tamir edildi'); save(); renderPanel(); });
+          const bk4 = gateWait(s.site + '_kale');
+          pitem('🔧 Kapıyı tamir et', Math.round(og.hp) + '/' + og.maxHp + ' HP' + (bk4 ? ' · <b>' + bk4 + 'sn</b>' : ''),
+            gc2, bk4 ? bk4 + 'sn' : 'Tamir', !bk4 && canAfford(gc2),
+            () => { pay(gc2); og.hp = og.maxHp; gateUsed(s.site + '_kale'); SFX.build(); toast('Kapı tamir edildi'); save(); renderPanel(); });
         }
       }
     }
@@ -3191,8 +3289,10 @@ function renderPanel() {
       } else {
         if (!G.palisade.gate.alive || G.palisade.gate.hp < G.palisade.gate.maxHp) {
           const pr = bcost(PAL.repair);
-          pitem('🚪 Köy kapısını onar', G.palisade.gate.alive ? 'Kapı hasarlı' : 'Kapı kırık — geceleri köy savunmasız!', pr, 'Onar', canAfford(pr),
-            () => { pay(pr); G.palisade.gate.hp = G.palisade.gate.maxHp; G.palisade.gate.alive = true; SFX.build(); toast('Köy kapısı onarıldı! 🚪'); save(); });
+          const bekle = gateWait('village');
+          pitem('🚪 Köy kapısını onar', (G.palisade.gate.alive ? 'Kapı hasarlı' : 'Kapı kırık — geceleri köy savunmasız!') +
+            (bekle ? ' · <b>ustalar ' + bekle + 'sn sonra hazır</b>' : ''), pr, bekle ? bekle + 'sn' : 'Onar', !bekle && canAfford(pr),
+            () => { pay(pr); G.palisade.gate.hp = G.palisade.gate.maxHp; G.palisade.gate.alive = true; gateUsed('village'); SFX.build(); toast('Köy kapısı onarıldı! 🚪'); save(); });
         }
         if (G.palisade.lv < 2) {
           const p2 = bcost(PAL2.cost);
@@ -7561,16 +7661,47 @@ function drawWeather() {
   if (!w2 || w2 === 'clear' || G.caveRun) return;
   ctx.save();
   if (w2 === 'rain' || w2 === 'storm') {
-    const n = w2 === 'storm' ? 100 : 48, sp = w2 === 'storm' ? 1250 : 850;
-    ctx.strokeStyle = 'rgba(165,195,225,0.36)'; ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = (i * 379.7 + G.t * (sp * 0.4)) % (VW + 80) - 40;
-      const y = (i * 211.3 + G.t * sp) % (VH + 60) - 30;
-      ctx.moveTo(x, y); ctx.lineTo(x - 5, y + 15);
+    const firtina = w2 === 'storm';
+    // Üç derinlik katmanı: uzak damlalar ince/yavaş/soluk, ön plandakiler kalın/hızlı/uzun
+    const kat = firtina
+      ? [{ n: 46, sp: 900, uz: 20, kal: 1, al: 0.22, eg: 0.20 }, { n: 40, sp: 1250, uz: 30, kal: 1.6, al: 0.34, eg: 0.24 }, { n: 22, sp: 1750, uz: 46, kal: 2.6, al: 0.42, eg: 0.28 }]
+      : [{ n: 34, sp: 620, uz: 15, kal: 0.9, al: 0.18, eg: 0.10 }, { n: 26, sp: 880, uz: 24, kal: 1.4, al: 0.28, eg: 0.13 }, { n: 12, sp: 1240, uz: 38, kal: 2.2, al: 0.36, eg: 0.16 }];
+    for (let k = 0; k < kat.length; k++) {
+      const L = kat[k];
+      ctx.strokeStyle = 'rgba(178,206,236,' + L.al + ')';
+      ctx.lineWidth = L.kal; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < L.n; i++) {
+        const sk = i * 7919 + k * 104729;
+        const x = ((sk % 1013) / 1013 * (VW + 120) + G.t * L.sp * L.eg) % (VW + 120) - 60;
+        const y = ((sk % 977) / 977 * (VH + 80) + G.t * L.sp) % (VH + 80) - 40;
+        ctx.moveTo(x, y); ctx.lineTo(x - L.uz * L.eg, y + L.uz);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(28,38,58,' + (w2 === 'storm' ? 0.17 : 0.09) + ')';
+    ctx.lineCap = 'butt';
+    // yere çarpan damlaların sıçrama halkaları
+    ctx.strokeStyle = 'rgba(200,224,248,' + (firtina ? 0.3 : 0.22) + ')'; ctx.lineWidth = 1.2;
+    const sn = firtina ? 16 : 9;
+    for (let i = 0; i < sn; i++) {
+      const sk = i * 6151;
+      const faz = (G.t * 1.9 + (sk % 100) / 100) % 1;
+      const x = (sk % 1009) / 1009 * VW;
+      const y = VH * 0.45 + ((sk % 883) / 883) * VH * 0.55;
+      ctx.globalAlpha = 1 - faz;
+      ctx.beginPath(); ctx.ellipse(x, y, 2 + faz * 9, (2 + faz * 9) * 0.35, 0, 0, TAU); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // cama düşmüş iri damlalar (ön plan derinliği)
+    ctx.fillStyle = 'rgba(206,228,250,' + (firtina ? 0.16 : 0.11) + ')';
+    for (let i = 0; i < (firtina ? 7 : 4); i++) {
+      const sk = i * 3571;
+      const faz = (G.t * 0.55 + (sk % 100) / 100) % 1;
+      const x = (sk % 991) / 991 * VW;
+      const y = faz * (VH + 60) - 30;
+      ctx.beginPath(); ctx.ellipse(x, y, 3.2, 6.5, 0, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(28,38,58,' + (firtina ? 0.17 : 0.09) + ')';
     ctx.fillRect(0, 0, VW, VH);
     if ((G.wFlash || 0) > 0) { // gökten inen soğuk parlama: iki kez kırpışır, aşağı doğru söner
       const f = G.wFlash;
@@ -7583,13 +7714,19 @@ function drawWeather() {
       ctx.fillStyle = g3; ctx.fillRect(0, 0, VW, VH);
     }
   } else if (w2 === 'snow') {
-    ctx.fillStyle = 'rgba(242,247,255,0.85)';
-    for (let i = 0; i < 64; i++) {
-      const x = (i * 379.7 + Math.sin(G.t * 0.9 + i) * 46 + G.t * 32 + VW) % (VW + 24) - 12;
-      const y = (i * 211.3 + G.t * (46 + (i % 5) * 15)) % (VH + 24) - 12;
-      ctx.beginPath(); ctx.arc(x, y, 1.3 + (i % 3) * 0.8, 0, TAU); ctx.fill();
+    // Üç katman: uzak taneler küçük/yavaş, ön plandakiler iri ve yumuşak
+    const kat = [{ n: 40, r: 1.2, sp: 34, sal: 22, al: 0.55 }, { n: 26, r: 2.2, sp: 58, sal: 34, al: 0.75 }, { n: 12, r: 3.6, sp: 86, sal: 46, al: 0.9 }];
+    for (let k = 0; k < kat.length; k++) {
+      const L = kat[k];
+      ctx.fillStyle = 'rgba(244,249,255,' + L.al + ')';
+      for (let i = 0; i < L.n; i++) {
+        const sk = i * 7919 + k * 104729;
+        const x = ((sk % 1013) / 1013 * (VW + 60) + Math.sin(G.t * 0.7 + i) * L.sal + G.t * 18) % (VW + 60) - 30;
+        const y = ((sk % 977) / 977 * (VH + 60) + G.t * L.sp) % (VH + 60) - 30;
+        ctx.beginPath(); ctx.arc(x, y, L.r, 0, TAU); ctx.fill();
+      }
     }
-    ctx.fillStyle = 'rgba(222,236,255,0.08)'; ctx.fillRect(0, 0, VW, VH);
+    ctx.fillStyle = 'rgba(222,236,255,0.09)'; ctx.fillRect(0, 0, VW, VH);
   } else if (w2 === 'fog') {
     for (let i = 0; i < 5; i++) {
       const x = (i * 331 + G.t * 20) % (VW + 420) - 210;
