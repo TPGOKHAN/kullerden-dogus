@@ -593,9 +593,13 @@ function cmdRecalc(c) {
   const C = COMMANDERS[c.id];
   const gs = gearStats(c.gear);
   const frac = c.maxHp ? c.hp / c.maxHp : 1;
-  c.maxHp = Math.round((C.hp + (c.lv - 1) * 14 + gs.hp) * (1 + gs.hpp / 100));
+  // Sv.20'ye kadar +14❤/+2⚔ (eski değerler birebir korunur), sonrası +7❤/+1⚔
+  const n = c.lv - 1;
+  const lvHp = n <= 19 ? n * 14 : 19 * 14 + (n - 19) * 7;
+  const lvDmg = n <= 19 ? n * 2 : 19 * 2 + (n - 19);
+  c.maxHp = Math.round((C.hp + lvHp + gs.hp) * (1 + gs.hpp / 100));
   c.hp = Math.max(1, Math.round(c.maxHp * frac));
-  c.tdmg = Math.round((C.dmg + (c.lv - 1) * 2 + gs.atk) * (1 + gs.atkp / 100));
+  c.tdmg = Math.round((C.dmg + lvDmg + gs.atk) * (1 + gs.atkp / 100));
 }
 // Hanedan Mirası: mücevherle alınan KALICI güçler — bölgeden bölgeye taşınır
 const DYN_UPG = {
@@ -607,8 +611,11 @@ const DYN_UPG = {
 };
 // Seviye sistemi: XP kaynakları öldürme/görev/fetih/baskın; her seviye +10 can +1 hasar,
 // asker kapasitesi = 2 + seviye/2 (+2 kışla Sv.2) — "ordu liderliği" karakterle büyür
-const xpNeed = lv => 80 + lv * 60;
-const LEVEL_MAX = 30;
+const xpNeed = lv => lv <= 30 ? 80 + lv * 60 : 1880 + (lv - 30) * 25;
+// Karakter tavanı Sv.100, komutan tavanı Sv.80. Eğriler Sv.30/Sv.20'ye kadar
+// AYNEN korunur (mevcut kayıtlar etkilenmesin), ondan sonrası yavaşlar — yoksa
+// doğrusal artışla 100. seviye ulaşılamaz bir sayıya çıkıyordu.
+const LEVEL_MAX = 100;
 const soldierCap = () => Math.min(12, 2 + Math.floor(G.level / 2)); // sadece karakter seviyesi (kışla yeni birim açar, kapasite vermez)
 const playerMaxHp = () => { const gs = gearStats(G.equip); return Math.round((100 + gs.hp + 25 * (G.dynUpg.vigor || 0) + (G.level - 1) * 10) * (1 + gs.hpp / 100) * BAL.php); };
 const playerSpeed = () => (225 + gearStats(G.equip).spd) * (1 + 0.08 * (G.dynUpg.swift || 0)) * (G.feastT > 0 ? 1.1 : 1) * (G.riding ? 1.55 : 1) * ((G.player.slowT || 0) > 0 ? 0.6 : 1); // ziyafet + at + donma
@@ -627,7 +634,7 @@ const SOLDIER_CLS = {
 const BARRACKS_CAP = [0, 3, 5];
 // ---------- Asker rütbe & seviye: XP leşle birikir, TERFİ MANUEL (Ordu panelinden altınla) ----------
 const SOLDIER_RANKS = ['Er', 'Onbaşı', 'Çavuş', 'Üstçavuş', 'Başçavuş', 'Muhafız', 'Kıdemli Muhafız', 'Yiğit', 'Alp', 'Başbuğ'];
-const SOLDIER_LV_MAX = 10, CMD_LV_MAX = 20;
+const SOLDIER_LV_MAX = 10, CMD_LV_MAX = 80;
 const sXpNeed = lv => 20 + lv * 15;          // sıradaki terfi için gereken XP
 const sPromoteCost = lv => 15 + lv * 10;     // terfi bedeli 🪙
 const soldierRank = s => SOLDIER_RANKS[Math.min(SOLDIER_LV_MAX, s.lv || 1) - 1];
@@ -736,7 +743,7 @@ const cmdIdFor = kind => PROV0.race === 'barbar' || !RACE_CMD_NAMES[PROV0.race]
   ? { rival: 'vulkar', chief: 'kaya', cmdr: 'marius' }[kind]
   : kind + '_' + PROV0.race;
 const RIVALC = () => COMMANDERS[cmdIdFor('rival')];
-const cmdKillsNeed = lv => 4 + lv * 3; // sıradaki seviye için gereken leş (öldürme) sayısı
+const cmdKillsNeed = lv => lv < 20 ? 4 + lv * 3 : 70; // Sv.20'den sonra sabit 70 leş (yoksa tavan erişilemez)
 const TRAITS = {
   keskin:    { name: 'Keskin', icon: '⚔️', desc: '+%20 hasar', dmg: 1.2 },
   dayanikli: { name: 'Dayanıklı', icon: '🛡️', desc: '+%30 can', hp: 1.3 },
@@ -2800,6 +2807,8 @@ function refreshHudDots() {
   // 🤝 Yoldaşlar: çevrimiçi değilsen davet, çevrimiçiysen ziyaret edilebilir yoldaş
   const yoldas = !NETP ? false : (G.netFriends || []).some(f => f.has_village && (BAL.visitSec - (f.used || 0)) > 60);
   hudDot('btnFriends', yoldas && !VISIT && !ISLAND);
+  // 🗺️ Harita: yerde yaralı yoldaş var (haritada kırmızı nabızla işaretli)
+  hudDot('btnMap', G.wounded.length > 0);
 }
 function updateHUD() {
   for (const [k] of RES_DEF) { const el = $('chip-' + k); const v = String(Math.floor(G.res[k])); if (el.textContent !== v) el.textContent = v; }
@@ -4132,6 +4141,24 @@ function drawMap() {
     m.font = 'bold 8.5px sans-serif'; m.fillStyle = '#7a1f14';
     m.fillText(spP.active.attack ? 'saldırı kolu!' : 'devriye', lx2, ly2 - 9);
   }
+  // YARALI YOLDAŞLAR: nerede düştüklerini haritadan gör, git kaldır.
+  // (Uzun süre terk edilirlerse düşman zindanına esir düşüyorlar — bu yüzden
+  //  yerlerini görebilmek kritik.)
+  for (const w of G.wounded) {
+    const [wx3, wy3] = W2S(w.x, w.y);
+    const nb = 0.6 + Math.sin(G.t * 4 + w.x) * 0.4;
+    m.fillStyle = 'rgba(200,40,30,' + (0.16 + nb * 0.14) + ')';
+    m.beginPath(); m.arc(wx3, wy3, 16 + nb * 5, 0, TAU); m.fill();
+    m.fillStyle = '#c03a2e';
+    m.beginPath(); m.arc(wx3, wy3, 7, 0, TAU); m.fill();
+    m.strokeStyle = '#fff'; m.lineWidth = 2; m.stroke();
+    m.font = '11px sans-serif'; m.textAlign = 'center'; m.fillStyle = '#fff';
+    m.fillText('🩸', wx3, wy3 + 4);
+    m.font = 'bold 9.5px sans-serif'; m.lineJoin = 'round';
+    const ad = (w.name || (w.cmd && COMMANDERS[w.cmd] && COMMANDERS[w.cmd].name) || 'Yaralı asker') + ' — yaralı!';
+    m.lineWidth = 3; m.strokeStyle = 'rgba(12,16,22,0.75)'; m.strokeText(ad, wx3, wy3 - 13);
+    m.fillStyle = '#ff9a8a'; m.fillText(ad, wx3, wy3 - 13);
+  }
   // oyuncu (indeyse mağara girişinde göster)
   const [px, py] = G.caveRun ? W2S(CAVE.x, CAVE.y) : W2S(G.player.x, G.player.y);
   m.fillStyle = '#c03a2e';
@@ -5069,9 +5096,13 @@ function regionMigrate(targetPid) {
       level: G.level, xp: G.xp, horseOwned: !!G.horseOwned,
       res: G.res, swordLv: G.swordLv, armorLv: G.armorLv,
       bag: G.bag, equip: G.equip, // kuşam ve çanta seninle göçer
-      soldiersOwned: G.soldiersOwned + Object.values(G.outposts).reduce((a, o) => a + (o.garrison || 0), 0), // garnizonlar da göçer
-      soldierCls: [...G.soldiers.map(sl => sl.cls || 'sword'), ...G.garrisonUnits.map(g2 => g2.cls || 'sword')],
-      soldierMeta: [...G.soldiers, ...G.garrisonUnits].map(sl => ({ cls: sl.cls || 'sword', lv: sl.lv || 1, xp: Math.round(sl.xp || 0) })),
+      // SADECE YANINDAKİ MAİYET GÖÇER. Garnizonlar fethedilen üsleri korumak için
+      // orada bırakılır, komutanların öz orduları da kendi bölgelerinde kalır —
+      // eskiden hepsi tek yığına ekleniyordu ve yeni haritada 12/12 olan ordu
+      // 28/12 gibi kapasite üstü bir sayıya fırlıyordu.
+      soldiersOwned: Math.min(G.soldiers.length, soldierCap()),
+      soldierCls: G.soldiers.slice(0, soldierCap()).map(sl => sl.cls || 'sword'),
+      soldierMeta: G.soldiers.slice(0, soldierCap()).map(sl => ({ cls: sl.cls || 'sword', lv: sl.lv || 1, xp: Math.round(sl.xp || 0) })),
       commanders: G.commanders.map(c => ({ id: c.id, lv: c.lv, kills: c.kills, gear: c.gear, purse: Math.round(c.purse || 0) })), // görev/ordu göçte sıfırlanır
       // esir/yaralı komutanlar da zincirlenmiş taşınır: yeni bölgenin zindanlarında kurtarılmayı bekler
       prisoners: (() => {
@@ -5374,7 +5405,11 @@ worldCv.addEventListener('pointerdown', e => {
     if (st === 2) { toast('✓ ' + p.name + ' zaten hanedanının toprağı'); return; }
     if (!G.victoryShown) { toast('Önce buradaki fethi tamamla (kamp + kale + lejyon)!'); return; }
     const C = WORLD_COUNTRIES[p.country];
-    if (confirm(p.name + ', ' + C.name + ' (Kademe ' + p.tier + ') seferine çıkılsın mı?\nKöy geride kalır; hanedan puanı, ekipman, ordu ve kaynaklar seninle gelir.')) {
+    const gar = Object.values(G.outposts).reduce((a2, o) => a2 + (o.garrison || 0), 0);
+    const uyari = '\n\nSeninle gelir: hanedan puanı, seviye, kuşam, çanta, kaynaklar ve YANINDAKİ '
+      + Math.min(G.soldiers.length, soldierCap()) + ' asker + ' + G.commanders.length + ' komutan.'
+      + '\nGeride kalır: köy, karakollar' + (gar ? ', ' + gar + ' garnizon askeri' : '') + ' ve komutanların öz orduları.';
+    if (confirm(p.name + ', ' + C.name + ' (Kademe ' + p.tier + ') seferine çıkılsın mı?' + uyari)) {
       closeWorld(); regionMigrate(p.id);
     }
     return;
