@@ -5861,9 +5861,33 @@ function rebuildKeepWalls() {
       Math.max(B2.x1 - B2.x0, B2.y1 - B2.y0) / 2 + 30);
   }
 }
-function opInside(site, x, y) {
+// Taş kalenin sur BANTLARI (içten dışa): [0] iç kale, [1] orta, [2] dış.
+// Her bant kendi başına yerleşim alanı — dış kale eklendikçe aradaki koca
+// boşluklar bomboş kalıyordu, oraya da inşa edebilelim.
+function opBands(site) {
+  const B0 = site === 'fort' ? FORT : LEG;
+  const op = G.outposts[site], lv = (op && op.lv) || 1;
+  const out = [];
+  for (let k = 0; k < lv; k++) {
+    const pad = k * KEEP_PAD;
+    out.push({
+      dis: { x0: B0.x0 - pad, y0: B0.y0 - pad, x1: B0.x1 + pad, y1: B0.y1 + pad },
+      ic: k === 0 ? null : { x0: B0.x0 - (k - 1) * KEEP_PAD, y0: B0.y0 - (k - 1) * KEEP_PAD,
+                             x1: B0.x1 + (k - 1) * KEEP_PAD, y1: B0.y1 + (k - 1) * KEEP_PAD },
+    });
+  }
+  return out;
+}
+// bant verilirse YALNIZ o bandın içi geçerli (dış kutunun içinde, iç kutunun dışında)
+function opInside(site, x, y, bant) {
   const O = OUTPOSTS[site];
   if (KEEP_SITES.includes(site)) {
+    if (bant) {
+      const P = 50;   // duvara pay: bant 150px, ortada ~46px'lik serbest şerit kalır
+      if (!(x > bant.dis.x0 + P && x < bant.dis.x1 - P && y > bant.dis.y0 + P && y < bant.dis.y1 - P)) return false;
+      if (bant.ic && x > bant.ic.x0 - P && x < bant.ic.x1 + P && y > bant.ic.y0 - P && y < bant.ic.y1 + P) return false;
+      return true;
+    }
     const B = keepBox(site, (G.outposts[site] && G.outposts[site].lv) || 1);
     return x > B.x0 + 62 && x < B.x1 - 62 && y > B.y0 + 62 && y < B.y1 - 62;
   }
@@ -5874,7 +5898,7 @@ function opInside(site, x, y) {
 // mesafesi, önceki arsalar). Ağaç/bina/yapı "canlı mı" durumuna göre değiştiği için
 // buraya karıştırılamaz: aynı üs kayıt açılışında yeniden kurulurken FARKLI konumlar
 // çıkar ve binalar arsalarını kaybederdi. Kaynaklar sonradan temizlenir.
-function opFreeSpot(site, kondu) {
+function opFreeSpot(site, kondu, bant) {
   const O = OUTPOSTS[site];
   // Arama Sv.3 dış kalesinin köşesine (merkezden ~600px) kadar uzanır; adım ince
   // tutulur, yoksa iki sur arasındaki dar bantlara hiç aday düşmüyor.
@@ -5882,7 +5906,7 @@ function opFreeSpot(site, kondu) {
     for (let k = 0; k < 40; k++) {
       const a = k * (TAU / 40) + R * 0.021;              // deterministik: her halkada açı kayar
       const x = O.x + Math.cos(a) * R, y = O.y + Math.sin(a) * R * 0.92;
-      if (!opInside(site, x, y)) continue;
+      if (!opInside(site, x, y, bant)) continue;
       if (dist(x, y, O.x, O.y) < 112) continue;                                   // sancağın dibi boş kalsın
       if (G.walls.some(w => !w.cave && rectYakin(w, x, y, 52))) continue;          // taş duvarlar + iç sur halkaları
       if (kondu.some(p => dist(x, y, p.x, p.y) < 118)) continue;                   // arsalar arası geçiş payı
@@ -5898,8 +5922,26 @@ function opAddPlots(site, hedef) {
   const mevcut = G.plots.filter(p => p.outpost === site);
   const kondu = mevcut.map(p => ({ x: p.x, y: p.y }));
   let eklendi = 0;
+  // Taş kalede arsalar BANTLARA sırayla dağıtılır (iç kale → orta → dış → iç ...).
+  // Tek havuzdan arama yapınca hepsi en içteki boşluğa yığılıyor, dış bantlar
+  // bomboş kalıyordu.
+  const bantlar = KEEP_SITES.includes(site) ? opBands(site) : null;
+  const bantNo = (x, y) => {   // nokta hangi banda düşüyor
+    if (!bantlar) return 0;
+    for (let b = 0; b < bantlar.length; b++) if (opInside(site, x, y, bantlar[b])) return b;
+    return 0;
+  };
   for (let i = mevcut.length; i < hedef; i++) {
-    const spot = opFreeSpot(site, kondu);
+    let spot = null;
+    if (bantlar && bantlar.length > 1) {
+      // EN BOŞ BANT önce denenir (eşitlikte dıştaki): seviye atlayınca açılan
+      // yeni bant hemen dolmaya başlasın, her şey iç kaleye yığılmasın.
+      const say = bantlar.map(() => 0);
+      for (const k of kondu) say[bantNo(k.x, k.y)]++;
+      const sira = bantlar.map((_, b) => b).sort((a2, b2) => say[a2] - say[b2] || b2 - a2);
+      for (const b of sira) { spot = opFreeSpot(site, kondu, bantlar[b]); if (spot) break; }
+    }
+    if (!spot) spot = opFreeSpot(site, kondu);            // bant bulunamadıysa serbest arama
     if (!spot) break;                                    // yer kalmadı: sessizce dur
     kondu.push(spot);
     G.plots.push({ x: spot.x, y: spot.y, built: null, outpost: site, plan: OUTPOST_PLAN[i % OUTPOST_PLAN.length] });
