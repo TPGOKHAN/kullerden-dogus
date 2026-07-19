@@ -999,11 +999,14 @@ function rebuildPalisade() {
   if (G.palisade.built) clearNodesInside(CAMPFIRE.x, CAMPFIRE.y, r + 26); // sur içinde ağaç/kaya kalmasın
   PAL_GATE.x = CAMPFIRE.x + r; PAL_GATE.y = CAMPFIRE.y;
   G.palStakes.length = 0;
-  // adım açısal değil MESAFE bazlı: sur büyüse de ayak araları sabit kalır (boşluk oluşmaz)
-  const step = (G.palisade.lv >= 2 ? 33 : 42) / r;
-  for (let a = 0; a < TAU; a += step) {
-    let da = Math.abs(a); if (da > Math.PI) da = TAU - da; // kapı açısı 0 (doğu)
-    if (da < palGapA() + 0.05) continue;
+  // Kazıklar kapı boşluğunun İKİ KENARINDAN başlayıp eşit aralıkla dizilir
+  // (karakol suruyla aynı düzeltme): sabit adımla dönüp boşluğa denk geleni
+  // atlamak, deliğin gerçek genişliğini kapıdan büyük yapıyordu.
+  const gA = palGapA();
+  const yay = TAU - 2 * gA;
+  const n = Math.max(12, Math.round(yay * r / (G.palisade.lv >= 2 ? 33 : 42)));
+  for (let i = 0; i <= n; i++) {
+    const a = gA + yay * (i / n);   // kapı açısı 0 (doğu)
     G.palStakes.push({ x: CAMPFIRE.x + Math.cos(a) * r + rr(-2, 2), y: CAMPFIRE.y + Math.sin(a) * r + rr(-2, 2), h: rr(24, 30) });
   }
 }
@@ -1200,15 +1203,20 @@ function rebuildOutpostWalls() {
       continue;
     }
     const O = OUTPOSTS[site], gapDir = opWallGapDir(site);
-    const R = opWallR(op);
-    const step = 40 / R;
-    for (let a = 0; a < TAU; a += step) {
-      if (angDiff(a, gapDir) < opGapA(op) + 0.04) continue;
+    const R = opWallR(op), gA = opGapA(op);
+    // Kazıklar boşluğun İKİ KENARINDAN başlayıp eşit aralıkla dizilir.
+    // Eskiden sabit adımla dönülüp boşluğa denk gelenler atlanıyordu: son kazık
+    // rastgele bir yerde bitiyor, delik 90px yerine 140-155px açılıyor, kapı da
+    // 51px çizildiği için "koca deliğin ortasında küçük kapı" görüntüsü çıkıyordu.
+    const yay = TAU - 2 * gA;                       // kazıkla dolacak yay
+    const n = Math.max(10, Math.round(yay * R / 40));
+    for (let i = 0; i <= n; i++) {
+      const a = gapDir + gA + yay * (i / n);
       G.opStakes.push({ x: O.x + Math.cos(a) * R + rr(-2, 2), y: O.y + Math.sin(a) * R + rr(-2, 2), h: rr(24, 30) });
     }
     const ghp = op.wallGateHp !== undefined ? op.wallGateHp : OP_WALL.gateHp;
     G.structures.push({
-      kind: 'owgate', site, ang: gapDir, // kapı halkanın teğetine oturur
+      kind: 'owgate', site, ang: gapDir, gw: gA * R,  // gw: kapının yarı genişliği = boşluğun yarısı
       x: O.x + Math.cos(gapDir) * R, y: O.y + Math.sin(gapDir) * R,
       hp: Math.max(0, ghp), maxHp: OP_WALL.gateHp, alive: ghp > 0,
     });
@@ -2411,12 +2419,17 @@ function autoCaravan(s, sites) {
   if ((G.carCd[s.id] || 0) > G.t) return;                       // aynı üs sürekli kervan yollamasın
   if (G.caravans.some(c => c.fromSite === s.id)) return;        // yoldaki kervanı bitirsin
   const cap = s.id === 'village' ? stockCap() : opStockCap(s.op);
-  const fazla = [];
+  // İki ayrı eşik: YARDIM için ambarın %75'i (bolluk varsa paylaş), SATIŞ için
+  // %55 (yapacak iş kalmayınca altın üretmek asıl amaç — karakol yükseltmesi ve
+  // asker/köylü bedelleri altın istiyor, kaynak yığılı dururken tıkanmasın).
+  const fazla = [], satilir = [];
   for (const [k] of RES_DEF) {
     if (k === 'gold' || k === 'gems') continue;                 // değerliler kervanla taşınmaz
-    if (Math.floor(s.stock[k] || 0) >= cap * 0.75) fazla.push(k);
+    const v = Math.floor(s.stock[k] || 0);
+    if (v >= cap * 0.75) fazla.push(k);
+    if (v >= cap * 0.55) satilir.push(k);   // ayrılan pay autoSat içinde düşülür
   }
-  if (!fazla.length) return;
+  if (!fazla.length) return autoSat(s, satilir, cap);
   // en muhtaç üssü seç: ambarı %40'ın altında olan
   let hedef = null, enAz = 1e9;
   for (const t of sites) {
@@ -2427,7 +2440,7 @@ function autoCaravan(s, sites) {
       if (tv < tcap * 0.4 && tv < enAz) { enAz = tv; hedef = { t, k, tcap }; }
     }
   }
-  if (!hedef) return autoSat(s, fazla, cap);   // kimse muhtaç değil → fazlayı tüccara sat
+  if (!hedef) return autoSat(s, satilir, cap);   // kimse muhtaç değil → fazlayı tüccara sat
   const k = hedef.k;
   const yuk = Math.min(80, Math.floor((s.stock[k] || 0) - cap * 0.5), hedef.tcap - Math.floor(hedef.t.stock[k] || 0));
   if (yuk < 10) return;                                          // küçük yük için kervan kaldırmaya değmez
@@ -2447,13 +2460,43 @@ function autoCaravan(s, sites) {
 // GÖÇEBE TÜCCARA SATIŞ: ambarı taşan ama kimsenin ihtiyacı olmayan kaynak parayla döner.
 // Oto yönetimin altın açığını (köylü daveti, asker, sur) bu kapatır — köy kendi kendini finanse eder.
 const SAT_FIYAT = { wood: 1.2, stone: 1.6, scrap: 2.2, iron: 6, meat: 5 };   // birim başına 🪙
+// Bu üste BEKLEYEN ödemelerin kalan kısmı. Satış kervanı bunu ayırmazsa
+// yükseltme için biriktirilen odunu tüccara götürüp işi sonsuza dek kilitliyor
+// (yaşandı: karakol Sv.1'de takıldı, kasada 3400 altın vardı ama odun 0'dı).
+function bekleyenIhtiyac(s) {
+  const need = {};
+  const ekle = (cost, paid) => {
+    if (!cost) return;
+    for (const [k, v] of Object.entries(cost)) {
+      const kalan = v - ((paid || {})[k] || 0);
+      if (kalan > 0) need[k] = (need[k] || 0) + kalan;
+    }
+  };
+  const sahip = s.id === 'village' ? null : s.id;
+  if (s.op) {
+    if ((s.op.lv || 1) < 3) ekle(bcost(OUTPOST_UPG[s.op.lv || 1]), s.op.lvPaid);   // sıradaki karakol seviyesi
+    if (!s.op.wall && OP_WALL_SITES.includes(s.id)) ekle(bcost(OP_WALL.cost), s.op.wallPaid);
+  } else if (G.villageTier < 1 + EXPANSIONS.length) {
+    ekle(bcost(EXPANSIONS[G.villageTier - 1].cost), G.autoExpPaid);
+  }
+  for (const pl of G.plots)                       // başlamış şantiyeler
+    if (!pl.built && pl.paid && (pl.outpost || null) === sahip && BUILDINGS[pl.plan]) ekle(bcost(BUILDINGS[pl.plan].cost), pl.paid);
+  for (const b of G.buildings) {                  // başlamış onarım/yükseltmeler
+    if ((b.outpost || null) !== sahip) continue;
+    if (b.ruined && b.repPaid) ekle(bcost(repairCost(b.type)), b.repPaid);
+    if (b.upPaid) ekle(bcost(nextUpCost(b)), b.upPaid);
+    if (b.fixPaid) ekle(bcost(fixCost(b)), b.fixPaid);
+  }
+  return need;
+}
 function autoSat(s, fazla, cap) {
   const satilir = fazla.filter(k => SAT_FIYAT[k]);
   if (!satilir.length) return;
   // en çok biriken kaynağı sat
   let k = satilir[0];
   for (const k2 of satilir) if ((s.stock[k2] || 0) > (s.stock[k] || 0)) k = k2;
-  const yuk = Math.min(90, Math.floor((s.stock[k] || 0) - cap * 0.5));
+  const ayrilan = bekleyenIhtiyac(s)[k] || 0;    // yükseltme/inşaat için sözü verilmiş miktar
+  const yuk = Math.min(90, Math.floor((s.stock[k] || 0) - cap * 0.5 - ayrilan));
   if (yuk < 10) return;
   const kazanc = Math.max(1, Math.round(yuk * SAT_FIYAT[k]));
   s.stock[k] -= yuk;
@@ -2685,6 +2728,31 @@ function autoSite(s) {
       autoSay(s.id, 'garnizona asker katıldı 🗡️ (' + op2.garrison + '/' + garrisonCap(op2) + ')'); save();
       return true;
     }
+  }
+  // 5b) KARAKOLU GÜÇLENDİR (Sv.1→3): vergi +%50, garnizon +2, alan genişler,
+  //     yeni arsalar açılır. Bu adım hiç yoktu — karakol kendi kendine asla
+  //     seviye atlamıyordu, kullanıcı "kaynağı var ama güçlendirmiyor" dedi.
+  //     Arsalar dolmadan ve (kazık surlu üste) sur dikilmeden sıra buraya gelmez.
+  if (s.op && (s.op.lv || 1) < 3 && !VISIT && !ISLAND
+      && !G.plots.some(p2 => p2.outpost === s.id && !p2.built)
+      && (!OP_WALL_SITES.includes(s.id) || s.op.wall)) {
+    const uc = bcost(OUTPOST_UPG[s.op.lv || 1]);
+    s.op.lvPaid = s.op.lvPaid || {};
+    const r8 = autoPayFly(s, uc, s.op.lvPaid, s.anchor.x, s.anchor.y - 30);
+    if (r8 === 2) {
+      delete s.op.lvPaid;
+      s.op.lv = (s.op.lv || 1) + 1;
+      const bn = G.structures.find(x => x.kind === 'banner' && x.site === s.id);
+      if (bn) { bn.maxHp = outpostBannerHp(s.op.lv); bn.hp = bn.maxHp; }
+      if (s.op.wall) rebuildOutpostWalls();
+      if (KEEP_SITES.includes(s.id)) rebuildKeepWalls();
+      const yeniArsa = opAddPlots(s.id, OUTPOST_PLOT_N[Math.min(3, s.op.lv)]);
+      spawnParts(s.anchor.x, s.anchor.y - 40, 14, { colors: ['#ffd257', '#fff3c9'], v: 45, life: 1.1, g: -25 });
+      SFX.upgrade();
+      autoSay(s.id, 'karakol Sv.' + s.op.lv + ' oldu 🏳️' + (yeniArsa ? ' · +' + yeniArsa + ' arsa, alan genişledi' : ''));
+      save();
+    }
+    if (r8) return true;
   }
   // 6) bina yükseltme (oyuncu başındaysa karışma)
   for (const b of G.buildings) {
@@ -8528,10 +8596,12 @@ function render() {
     // oyunun sahte-3B çiziminde döndürülen dikdörtgen "yere serilmiş tahta" gibi
     // duruyor, kapı olduğu anlaşılmıyordu. Genişlik açının yatay bileşenine göre
     // hafifçe daralır (yandan bakış hissi), yükseklik hep aynı kalır.
-    const yatay = 0.62 + 0.38 * Math.abs(Math.sin(s.ang || 0));
+    // Kapı, surdaki boşluğu TAM doldurur. Kazıklar her yerde dik çizildiği için
+    // kapıya da perspektif daraltması uygulanmaz — yoksa yandan bakınca kapı
+    // daralıp deliğin ortasında yüzüyor gibi duruyordu.
     ctx.save();
     ctx.translate(s.x, s.y);
-    ctx.scale(yatay, 1);
+    ctx.scale((s.gw || 45) / 36, 1);   // çizim ±36 birim; boşluğun yarısına ölçekle
     // Kapı, kazık surun bir parçası gibi görünmeli: aynı açık ahşap tonu, aynı
     // sivri kazık başlıkları, ince demir kuşak. (Önceki hâli koyu ve iri kalıp
     // çitin yanında yamalı duruyordu.)
