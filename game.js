@@ -89,28 +89,28 @@ if (VISIT || ISLAND) MENU_RESUME = true; // ziyaret/ada: menüsüz doğrudan dü
 // FANTEZİ CİHANI: bölgeler + vilayetler + her vilayetin kendi IRK'ı (renk/silah/dövüş tarzı farklı)
 const WORLD_COUNTRIES = {
   // Renkler cihan haritasındaki biyomlardır: çöl / bozkır / bataklık / volkanik dağ / buzul
-  kul:   { name: 'Kül Yakası',  flag: '🔥', lx: 235, ly: 677, col: '#c9a15e', edge: '#8a6a35' },
-  orta:  { name: 'Ortadüzlük',  flag: '🌾', lx: 495, ly: 581, col: '#7c9e4c', edge: '#4e6b2c' },
-  sis:   { name: 'Sisbatak',    flag: '🌫️', lx: 760, ly: 671, col: '#5b8266', edge: '#33543f' },
-  demir: { name: 'Demirdağlar', flag: '⛰️', lx: 190, ly: 145, col: '#8a5c45', edge: '#553326' },
-  buz:   { name: 'Buzyaka',     flag: '❄️', lx: 610, ly: 73,  col: '#cfdfe8', edge: '#8ba7b8' },
+  kul:   { name: 'Kül Yakası',  flag: '🔥', lx: 180, ly: 360, col: '#c9a15e', edge: '#8a6a35' },
+  orta:  { name: 'Ortadüzlük',  flag: '🌾', lx: 490, ly: 230, col: '#7c9e4c', edge: '#4e6b2c' },
+  sis:   { name: 'Sisbatak',    flag: '🌫️', lx: 720, ly: 450, col: '#5b8266', edge: '#33543f' },
+  demir: { name: 'Demirdağlar', flag: '⛰️', lx: 340, ly: 40, col: '#8a5c45', edge: '#553326' },
+  buz:   { name: 'Buzyaka',     flag: '❄️', lx: 670, ly: 30,  col: '#cfdfe8', edge: '#8ba7b8' },
 };
 const WORLD_PROVINCES = [
   // { id, name, country, race, wx/wy (cihan haritası), tier (zorluk), links (komşular) }
-  { id: 'koryurt',   name: 'Köryurt',       country: 'kul',   race: 'barbar',    wx: 320, wy: 569, tier: 1,  links: ['kulpinar', 'kumtepe', 'yelovasi'] },
-  { id: 'kulpinar',  name: 'Külpınar',      country: 'kul',   race: 'mizrakli',  wx: 218, wy: 502, tier: 2,  links: ['koryurt', 'kumtepe', 'demirkapi'] },
-  { id: 'kumtepe',   name: 'Kumtepe',       country: 'kul',   race: 'col',       wx: 150, wy: 611, tier: 3,  links: ['koryurt', 'kulpinar'] },
-  { id: 'yelovasi',  name: 'Yel Ovası',     country: 'orta',  race: 'atli',      wx: 432, wy: 474, tier: 4,  links: ['koryurt', 'gunbatar', 'arenakent'] },
-  { id: 'gunbatar',  name: 'Günbatar',      country: 'orta',  race: 'samuray',   wx: 468, wy: 348, tier: 5,  links: ['yelovasi', 'demirkapi', 'buzhisar'] },
-  { id: 'sazlik',    name: 'Sazlıkköy',     country: 'sis',   race: 'kurt',      wx: 662, wy: 602, tier: 5,  links: ['arenakent', 'karabatak'] },
-  { id: 'arenakent', name: 'Arenakent',     country: 'orta',  race: 'gladyator', wx: 558, wy: 518, tier: 6,  links: ['yelovasi', 'sazlik'] },
-  { id: 'karabatak', name: 'Karabatak',     country: 'sis',   race: 'golge',     wx: 788, wy: 559, tier: 6,  links: ['sazlik', 'yesilvadi'] },
-  { id: 'demirkapi', name: 'Demirkapı',     country: 'demir', race: 'tasdev',    wx: 252, wy: 317, tier: 7,  links: ['kulpinar', 'gunbatar', 'korukale'] },
-  { id: 'korukale',  name: 'Korukale',      country: 'demir', race: 'ates',      wx: 158, wy: 220, tier: 8,  links: ['demirkapi'] },
-  { id: 'yesilvadi', name: 'Yeşilvadi',     country: 'sis',   race: 'orman',     wx: 826, wy: 414, tier: 8,  links: ['karabatak', 'kiragi'] },
-  { id: 'buzhisar',  name: 'Buzhisar',      country: 'buz',   race: 'buz',       wx: 556, wy: 203, tier: 8,  links: ['gunbatar', 'kiragi', 'tahtkaya'] },
-  { id: 'kiragi',    name: 'Kırağı Geçidi', country: 'buz',   race: 'buz',       wx: 702, wy: 155, tier: 9,  links: ['buzhisar', 'yesilvadi', 'tahtkaya'] },
-  { id: 'tahtkaya',  name: 'Taht Kayası',   country: 'buz',   race: 'golge',     wx: 428, wy: 102,  tier: 10, links: ['buzhisar', 'kiragi'] },
+  { id: 'koryurt',   name: 'Köryurt',       country: 'kul',   race: 'barbar',    wx: 300, wy: 585, tier: 1,  links: ['kulpinar', 'kumtepe', 'yelovasi'] },
+  { id: 'kulpinar',  name: 'Külpınar',      country: 'kul',   race: 'mizrakli',  wx: 210, wy: 500, tier: 2,  links: ['koryurt', 'kumtepe', 'demirkapi'] },
+  { id: 'kumtepe',   name: 'Kumtepe',       country: 'kul',   race: 'col',       wx: 160, wy: 630, tier: 3,  links: ['koryurt', 'kulpinar'] },
+  { id: 'yelovasi',  name: 'Yel Ovası',     country: 'orta',  race: 'atli',      wx: 470, wy: 455, tier: 4,  links: ['koryurt', 'gunbatar', 'arenakent'] },
+  { id: 'gunbatar',  name: 'Günbatar',      country: 'orta',  race: 'samuray',   wx: 500, wy: 330, tier: 5,  links: ['yelovasi', 'demirkapi', 'buzhisar'] },
+  { id: 'sazlik',    name: 'Sazlıkköy',     country: 'sis',   race: 'kurt',      wx: 640, wy: 600, tier: 5,  links: ['arenakent', 'karabatak'] },
+  { id: 'arenakent', name: 'Arenakent',     country: 'orta',  race: 'gladyator', wx: 575, wy: 485, tier: 6,  links: ['yelovasi', 'sazlik'] },
+  { id: 'karabatak', name: 'Karabatak',     country: 'sis',   race: 'golge',     wx: 790, wy: 570, tier: 6,  links: ['sazlik', 'yesilvadi'] },
+  { id: 'demirkapi', name: 'Demirkapı',     country: 'demir', race: 'tasdev',    wx: 300, wy: 250, tier: 7,  links: ['kulpinar', 'gunbatar', 'korukale'] },
+  { id: 'korukale',  name: 'Korukale',      country: 'demir', race: 'ates',      wx: 210, wy: 140, tier: 8,  links: ['demirkapi'] },
+  { id: 'yesilvadi', name: 'Yeşilvadi',     country: 'sis',   race: 'orman',     wx: 860, wy: 400, tier: 8,  links: ['karabatak', 'kiragi'] },
+  { id: 'buzhisar',  name: 'Buzhisar',      country: 'buz',   race: 'buz',       wx: 580, wy: 150, tier: 8,  links: ['gunbatar', 'kiragi', 'tahtkaya'] },
+  { id: 'kiragi',    name: 'Kırağı Geçidi', country: 'buz',   race: 'buz',       wx: 760, wy: 150, tier: 9,  links: ['buzhisar', 'yesilvadi', 'tahtkaya'] },
+  { id: 'tahtkaya',  name: 'Taht Kayası',   country: 'buz',   race: 'golge',     wx: 500, wy: 60,  tier: 10, links: ['buzhisar', 'kiragi'] },
 ];
 // ---------- IRKLAR: her vilayetin halkı farklı savaşır (renk, silah, stat çarpanları) ----------
 const RACES = {
@@ -5152,11 +5152,12 @@ function provState(p) {
 // Stilize İskandinavya + Baltık kıyıları (1000×620 cihan tuvali)
 // Fantezi kıtası: 5 diyar tek kara parçasını paylaşır (deniz sadece kenarlarda)
 const WORLD_POLY = {
-  demir: [[60, 387], [52, 278], [78, 169], [128, 87], [210, 53], [300, 56], [356, 106], [352, 194], [318, 278], [330, 363], [296, 411], [200, 426], [110, 421]],
-  buz:   [[356, 106], [300, 56], [368, 27], [470, 15], [580, 19], [690, 31], [790, 63], [850, 121], [846, 203], [790, 252], [700, 271], [600, 288], [500, 281], [420, 254], [352, 194]],
-  orta:  [[318, 278], [352, 194], [420, 254], [500, 281], [600, 288], [640, 363], [636, 460], [600, 547], [520, 600], [430, 605], [372, 547], [340, 460], [330, 363]],
-  sis:   [[600, 288], [700, 271], [790, 252], [846, 203], [900, 278], [928, 399], [912, 520], [860, 629], [780, 690], [690, 702], [630, 653], [600, 547], [636, 460], [640, 363]],
-  kul:   [[330, 363], [340, 460], [372, 547], [430, 605], [420, 677], [350, 721], [250, 726], [150, 702], [80, 639], [56, 532], [110, 421], [200, 426], [296, 411]],
+  // Sınırlar world-map.png üzerindeki biyom geçişlerine göre çizildi.
+  demir: [[90, 225], [140, 98], [240, 30], [340, 8], [440, 45], [460, 128], [420, 195], [400, 270], [360, 315], [220, 345], [110, 330]],
+  buz:   [[440, 45], [520, 8], [660, 8], [780, 30], [880, 83], [920, 150], [900, 218], [780, 233], [660, 225], [550, 203], [460, 165], [460, 128]],
+  orta:  [[400, 195], [460, 165], [550, 203], [660, 225], [680, 315], [660, 413], [600, 488], [520, 525], [440, 495], [400, 413], [380, 315], [400, 270]],
+  sis:   [[660, 225], [780, 233], [900, 218], [950, 270], [970, 375], [950, 480], [900, 585], [820, 660], [720, 698], [620, 690], [560, 630], [520, 525], [600, 488], [660, 413], [680, 315]],
+  kul:   [[110, 330], [220, 345], [360, 315], [380, 315], [400, 413], [440, 495], [520, 525], [500, 600], [440, 675], [340, 713], [220, 698], [120, 645], [60, 540], [60, 420]],
 };
 // Görünüm paketi (admin panelinden): oyunun prosedürel renk paleti değiştirilebilir
 let SKIN = {};
@@ -5174,10 +5175,14 @@ const WORLD_MAP_W = 1000, WORLD_MAP_H = 750;
 // Kullanıcının hazırladığı harita görseli: klasöre world-map.png konursa cihan
 // haritası prosedürel çizim yerine BU görseli kullanır, etiket/vilayet noktaları
 // üstüne bindirilir. Dosya yoksa prosedürel ada çizimi devreye girer.
+// Önce sıkıştırılmış world-map.jpg denenir (2.9 MB PNG → 660 KB), yoksa PNG'ye
+// düşer. Kullanıcı haritayı değiştirmek isterse klasöre world-map.png koyması
+// yeterli; jpg silinince otomatik ona döner.
 const worldImg = new Image();
 let worldImgOk = false;
 worldImg.onload = () => { worldImgOk = worldImg.naturalWidth > 0; };
-worldImg.src = 'world-map.png';
+worldImg.onerror = () => { if (worldImg.src.endsWith('.jpg')) worldImg.src = 'world-map.png'; };
+worldImg.src = 'world-map.jpg';
 function openWorld(choose) {
   if (VISIT || ISLAND) { toast('Ziyaret/ada sırasında cihan seferi yapılamaz — önce eve dön', true); return; }
   G.worldChoose = !!choose;
@@ -5355,14 +5360,14 @@ function ciz_etiket_ve_noktalar(m) {
     m.fillText(dm, CC.lx, CC.ly);
   }
   // bağlantılar
-  m.setLineDash([6, 5]); m.lineWidth = 2;
+  m.setLineDash([7, 6]); m.lineWidth = 2.4;
   const seen = new Set();
   for (const p of WORLD_PROVINCES) for (const l of p.links) {
     const key = [p.id, l].sort().join('|');
     if (seen.has(key) || !PROV_BY_ID[l]) continue; seen.add(key);
     const q = PROV_BY_ID[l];
     const lit = provState(p) > 0 && provState(q) > 0;
-    m.strokeStyle = lit ? 'rgba(255,217,126,0.55)' : 'rgba(255,255,255,0.13)';
+    m.strokeStyle = lit ? 'rgba(255,217,126,0.8)' : 'rgba(255,255,255,0.35)';
     m.beginPath(); m.moveTo(p.wx, p.wy); m.lineTo(q.wx, q.wy); m.stroke();
   }
   m.setLineDash([]);
