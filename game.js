@@ -1124,16 +1124,20 @@ function rectRoute(x, y, tx, ty) {
   const PAD = 34;
   for (const w of G.walls) {
     if (dist(x, y, w.x + w.w / 2, w.y + w.h / 2) > 1400) continue; // uzaktakine bakma
-    const r = { x: w.x - PAD, y: w.y - PAD, w: w.w + PAD * 2, h: w.h + PAD * 2 };
-    if (!segHitsRect(x, y, tx, ty, r)) continue;
-    // Köşeler dikdörtgenin bir tık DIŞINDA olmalı; sınırda kalırsa "duvarın içinde" sayılıp elenirler
-    const D = 14;
-    const koseler = [[r.x - D, r.y - D], [r.x + r.w + D, r.y - D], [r.x + r.w + D, r.y + r.h + D], [r.x - D, r.y + r.h + D]];
+    // Engel testi HAM duvarla. Payla yapılırsa duvarın 34px yakınındaki birim
+    // hedefi duvarın öbür yanında olmasa bile "kesiyorum" sanıp köşeye
+    // yöneliyordu: kalenin İÇİNDE, doğu duvarına yaslanmış kervan merkeze
+    // gitmek yerine dışarıdaki köşeye çekiliyordu. Pay yalnızca köşe konumu için.
+    const ham = { x: w.x, y: w.y, w: w.w, h: w.h };
+    if (!segHitsRect(x, y, tx, ty, ham)) continue;
+    const D = PAD + 14;
+    const koseler = [[w.x - D, w.y - D], [w.x + w.w + D, w.y - D], [w.x + w.w + D, w.y + w.h + D], [w.x - D, w.y + w.h + D]];
     let en = null, ed = 1e9, yedek = null, yd = 1e9;
     for (const [kx, ky] of koseler) {
       const d = dist(x, y, kx, ky) + dist(kx, ky, tx, ty);
       if (d < yd) { yd = d; yedek = [kx, ky]; }
-      if (segHitsRect(x, y, kx, ky, r)) continue;      // köşeye giderken de duvarı kesmemeli
+      if (dist(x, y, kx, ky) < 40) continue;           // üstünde durduğum köşe: birimi orada dondurur
+      if (segHitsRect(x, y, kx, ky, ham)) continue;    // köşeye giderken de duvarı kesmemeli
       if (d < ed) { ed = d; en = [kx, ky]; }
     }
     const sec = en || yedek;                            // hiçbiri temiz değilse (duvarın içindeyiz) en kısa köşe
@@ -1143,7 +1147,7 @@ function rectRoute(x, y, tx, ty) {
 }
 // Hedefe düz gidiş bir halkayı kesiyorsa rota üret.
 // Dönüş: null (düz git) | {wx,wy} ara nokta | {attackVillageGate, ring} | {attackGate, ring} (düşman + sağlam kapı → kır)
-function wallRoute(x, y, tx, ty, isEnemy) {
+function wallRoute(x, y, tx, ty, isEnemy, u) {
   for (const rg of wallRings()) {
     const uIn = dist(x, y, rg.cx, rg.cy) < rg.r - 6;
     const tIn = dist(tx, ty, rg.cx, rg.cy) < rg.r - 6;
@@ -1177,7 +1181,7 @@ function wallRoute(x, y, tx, ty, isEnemy) {
     const w2 = dist(x, y, dis.wx, dis.wy) > 70 ? (orbitToGap(x, y, rg) || dis) : kapi(rg.r - 150);
     w2.ring = rg; w2.out = false; return w2;
   }
-  const kr = keepGateRoute(x, y, tx, ty);                  // kale surunun kapısından geç
+  const kr = keepGateRoute(x, y, tx, ty, u);               // kale surunun kapısından geç
   if (kr) return kr;
   return boxRoute(x, y, tx, ty) || rectRoute(x, y, tx, ty); // kale kutusunu dolaş, olmazsa tek duvarı
 }
@@ -1202,20 +1206,24 @@ function keepGateRings() {
   }
   return out;
 }
-function keepGateRoute(x, y, tx, ty) {
+function keepGateRoute(x, y, tx, ty, u) {
   // Dizideki İLK ayıran sur seçilemez: halkalar içten dışa sıralı olduğu için
   // dışarıdan gelen birim EN İÇTEKİ kapıya yöneliyor, aradaki dış surlara
   // tosluyordu (kervan "Taş Kale" yazısıyla duvarda asılı kalıyordu).
-  // Doğrusu: hâlâ AYIRAN halkalar arasından KAPISI EN YAKIN olanı seçmek —
-  // geçilen halka artık ayırmadığı için elenir, sıra kendiliğinden ilerler.
-  let en = null, ed = 1e9;
+  // "Kapısı en yakın" da yetmiyor: dış surun İÇİNDEKİ birime iç kalenin kapısı
+  // daha yakın düşüyor, birim aradaki orta sura yapışıyor. İç içe halkalarda
+  // ölçüt mesafe değil SIRA: önce çıkılacakların EN İÇTEKİ'si, sonra
+  // girileceklerin EN DIŞTAKİ'si. Geçilen halka artık ayırmaz, sıra ilerler.
+  let cik = null, cikA = 1e9, gir = null, girA = -1;
   for (const rg of keepGateRings()) {
     const b = rg.b;
     const ins = (px, py) => px > b.x0 && px < b.x1 && py > b.y0 && py < b.y1;
     if (ins(x, y) === ins(tx, ty)) continue;   // aynı taraftalar: bu sur engel değil
-    const d = dist(x, y, rg.gx, rg.gy);
-    if (d < ed) { ed = d; en = { rg, uIn: ins(x, y) }; }
+    const alan = (b.x1 - b.x0) * (b.y1 - b.y0);
+    if (ins(x, y)) { if (alan < cikA) { cikA = alan; cik = rg; } }
+    else if (alan > girA) { girA = alan; gir = rg; }
   }
+  const en = cik ? { rg: cik, uIn: true } : gir ? { rg: gir, uIn: false } : null;
   if (!en) return null;
   const rg = en.rg;
   // kapı ekseni: fort'ta yatay (y sabit), lejyonda dikey (x sabit)
@@ -1223,8 +1231,79 @@ function keepGateRoute(x, y, tx, ty) {
   const D = 85;
   const ic = rg.dikey ? { wx: rg.gx + D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy - D };
   const dis = rg.dikey ? { wx: rg.gx - D, wy: rg.gy } : { wx: rg.gx, wy: rg.gy + D };
-  if (sapma > 40) return en.uIn ? ic : dis;    // önce kapı eksenine hizalan
-  return en.uIn ? dis : ic;                    // hizalıyım: karşı tarafa geç
+  const hedef = sapma > 40 ? (en.uIn ? ic : dis) : (en.uIn ? dis : ic);
+  // DIŞARIDAYSAK kapıya giden düz çizgi surun kendisini kesebilir (kapı ters
+  // tarafta kalınca birim kaleye doğru yürür, duvara yapışırdı). İçeriden
+  // çıkarken gerek yok: iç bölge dışbükey.
+  // Kapı eksenine hizalıysak DÜZ git: o çizgi surdaki delikten geçer, ama
+  // çevre yürüyüşü deliği bilmez, "duvar var" deyip birimi geri çevirirdi —
+  // birim hizalanma sınırında kare kare iki karar arasında salınıyordu.
+  // Eşik (60) hizalanma eşiğinden (40) geniş: aradaki ölü bant salınımı keser.
+  if (!en.uIn) return sapma > 60 ? bantYuru(x, y, rg, hedef, u) : hedef;
+  return hedef;
+}
+// SURUN ÇEVRESİNDE YÜRÜYÜŞ. Önceden "en ucuz temiz köşe" seçiliyordu; iki köşenin
+// maliyeti eşitlenince birim kare kare ikisi arasında zıplayıp olduğu yerde
+// donuyordu (kervanın surda asılı kalması). Artık sur, çevresi 0..4 ile
+// ölçeklenmiş bir halka gibi ele alınır: birim ve kapı bu çevreye yansıtılır,
+// kısa yön BİR KEZ seçilip birime kilitlenir, köşeler sırayla geçilir.
+function bantYuru(x, y, rg, hedef, u) {
+  const b = rg.b, D = 66;                       // 150px'lik bandın ortasına yakın
+  const ham = { x: b.x0 + 4, y: b.y0 + 4, w: b.x1 - b.x0 - 8, h: b.y1 - b.y0 - 8 };
+  if (!segHitsRect(x, y, hedef.wx, hedef.wy, ham)) return hedef;   // yol zaten temiz
+  const R = { x0: b.x0 - D, y0: b.y0 - D, x1: b.x1 + D, y1: b.y1 + D };
+  const W = R.x1 - R.x0, H = R.y1 - R.y0;
+  const kis = (v, a, c) => v < a ? a : v > c ? c : v;
+  const par = (px, py) => {                     // çevre parametresi: köşeler tam sayı
+    const qx = kis(px, R.x0, R.x1), qy = kis(py, R.y0, R.y1);
+    const dl = qx - R.x0, dr = R.x1 - qx, dt = qy - R.y0, db = R.y1 - qy;
+    const m = Math.min(dl, dr, dt, db);
+    if (m === dt) return (qx - R.x0) / W;
+    if (m === dr) return 1 + (qy - R.y0) / H;
+    if (m === db) return 2 + (R.x1 - qx) / W;
+    return 3 + (R.y1 - qy) / H;
+  };
+  const nok = t => {
+    t = ((t % 4) + 4) % 4;
+    if (t < 1) return { wx: R.x0 + t * W, wy: R.y0 };
+    if (t < 2) return { wx: R.x1, wy: R.y0 + (t - 1) * H };
+    if (t < 3) return { wx: R.x1 - (t - 2) * W, wy: R.y1 };
+    return { wx: R.x0, wy: R.y1 - (t - 3) * H };
+  };
+  const tu = par(x, y), tg = par(hedef.wx, hedef.wy);
+  let fark = tg - tu;                           // kısa yönü bul (-2..2)
+  while (fark > 2) fark -= 4;
+  while (fark < -2) fark += 4;
+  let yon = fark >= 0 ? 1 : -1;
+  const anah = rg.dikey ? 'd' + Math.round(b.x0) : 'y' + Math.round(b.y1);
+  if (u) {                                      // yön kilidi: salınımı bitiren şey
+    if (!u.bntK || u.bntK !== anah) { u.bntK = anah; u.bntY = yon; }
+    else yon = u.bntY;
+  }
+  const kose = yon > 0 ? Math.floor(tu + 1e-6) + 1 : Math.ceil(tu - 1e-6) - 1;
+  const kalan = yon > 0 ? (tg >= tu ? tg - tu : tg - tu + 4) : (tg <= tu ? tu - tg : tu - tg + 4);
+  return Math.abs(kose - tu) >= kalan ? hedef : nok(kose);   // aradan köşe kalmadıysa doğrudan kapıya
+}
+// Bir kutuyu dolaşmak için en kısa TEMİZ köşe (yol kutuyu kesmiyorsa null)
+function kutuKose(x, y, tx, ty, b, PAD) {
+  PAD = PAD || 48;
+  // Engel testi HAM kutuyla yapılır. Payla yapılırsa sura yaslanmış birim kendi
+  // "içinde" sayılıp dolaşma iptal oluyor, birim duvar boyunca sonsuza dek inip
+  // çıkıyordu. Pay yalnızca köşeleri surdan uzağa koymak için.
+  const ham = { x: b.x0 + 4, y: b.y0 + 4, w: b.x1 - b.x0 - 8, h: b.y1 - b.y0 - 8 };
+  const ic = (px, py) => px > ham.x && px < ham.x + ham.w && py > ham.y && py < ham.y + ham.h;
+  if (ic(x, y) || ic(tx, ty)) return null;      // biri içerideyse kapı mantığı geçerli
+  if (!segHitsRect(x, y, tx, ty, ham)) return null;
+  const D = PAD + 18;
+  const koseler = [[b.x0 - D, b.y0 - D], [b.x1 + D, b.y0 - D], [b.x1 + D, b.y1 + D], [b.x0 - D, b.y1 + D]];
+  let en2 = null, ed2 = 1e9;
+  for (const [kx, ky] of koseler) {
+    if (dist(x, y, kx, ky) < 60) continue;      // üstünde durduğum köşe: seçilirse birim orada donuyor
+    if (segHitsRect(x, y, kx, ky, ham)) continue;
+    const d = dist(x, y, kx, ky) + dist(kx, ky, tx, ty);
+    if (d < ed2) { ed2 = d; en2 = [kx, ky]; }
+  }
+  return en2 ? { wx: en2[0], wy: en2[1] } : null;
 }
 // Kale/lejyon SURLARININ TAMAMINI tek bir engel olarak dolaş.
 // rectRoute her duvar parçasını AYRI ele alıyor: bir segmentin köşesini dönen
@@ -1242,21 +1321,9 @@ function keepBoxes() {
   return out;
 }
 function boxRoute(x, y, tx, ty) {
-  const PAD = 48;
   for (const B of keepBoxes()) {
-    const r = { x: B.x0 - PAD, y: B.y0 - PAD, w: B.x1 - B.x0 + PAD * 2, h: B.y1 - B.y0 + PAD * 2 };
-    const ic = (px, py) => px > r.x && px < r.x + r.w && py > r.y && py < r.y + r.h;
-    if (ic(x, y) || ic(tx, ty)) continue;          // biri içerideyse kapıdan geçilir, bu iş rectRoute'un
-    if (!segHitsRect(x, y, tx, ty, r)) continue;
-    const D = 18;
-    const koseler = [[r.x - D, r.y - D], [r.x + r.w + D, r.y - D], [r.x + r.w + D, r.y + r.h + D], [r.x - D, r.y + r.h + D]];
-    let en = null, ed = 1e9;
-    for (const [kx, ky] of koseler) {
-      if (segHitsRect(x, y, kx, ky, r)) continue;  // köşeye giderken kutuyu kesmemeli
-      const d = dist(x, y, kx, ky) + dist(kx, ky, tx, ty);
-      if (d < ed) { ed = d; en = [kx, ky]; }
-    }
-    if (en) return { wx: en[0], wy: en[1] };
+    const k = kutuKose(x, y, tx, ty, B);
+    if (k) return k;
   }
   return null;
 }
@@ -1276,7 +1343,7 @@ function navMove(u, tx, ty, spd, dt, r, isEnemy) {
   // yönelmek çoğu zaman NİHAİ hedeften uzaklaşmak demektir, son hedefe bakan
   // sayaç birimi daha kapıya varmadan "takıldı" sayıp işi iptal ettiriyordu.
   let gx = tx, gy = ty;
-  const rt = wallRoute(u.x, u.y, tx, ty, !!isEnemy);
+  const rt = wallRoute(u.x, u.y, tx, ty, !!isEnemy, u);
   if (rt && rt.wx !== undefined) { gx = rt.wx; gy = rt.wy; }
   // KAPI KİLİDİ: sur çizgisinin tam üstündeki birim, her karede "içerideyim /
   // dışarıdayım" arasında gidip gelip hedefini ters çeviriyordu — bir kare kapıya,
@@ -1331,7 +1398,7 @@ function navMove(u, tx, ty, spd, dt, r, isEnemy) {
   u.x = nx; u.y = ny; u.dir = ang;
   return sonMesafe;
 }
-const navReset = u => { u.nvBest = undefined; u.nvStuck = 0; u.nvDead = 0; u.nvWf = 0; u.nvGx = undefined; u.nvLock = null; };
+const navReset = u => { u.nvBest = undefined; u.nvStuck = 0; u.nvDead = 0; u.nvWf = 0; u.nvGx = undefined; u.nvLock = null; u.bntK = null; };
 // Zindan kafesi: esir komutanların tutulduğu yer (site merkezine göre sabit konum)
 const JAIL_OFFS = { camp1: [150, 70], fort: [180, 120], legion: [180, 120] };
 const jailPos = site => { const O = OUTPOSTS[site], o = JAIL_OFFS[site] || [150, 70]; return { x: O.x + o[0], y: O.y + o[1] }; };
