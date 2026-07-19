@@ -1292,11 +1292,28 @@ function coopMsg(m) {
     }
     return;
   }
+  if (ev === 'fix' && CO.isHost) { // yoldaşın yıkık binamı onardı
+    const b2 = G.buildings.find(bb => Math.abs(bb.x - d.x) < 24 && Math.abs(bb.y - d.y) < 24 && bb.ruined);
+    if (b2) {
+      b2.ruined = false; b2.hp = b2.maxHp; delete b2.repPaid;
+      spawnParts(b2.x, b2.y - 30, 12, { colors: ['#ffd257', '#fff3c9'], v: 45, life: 1, g: -25 });
+      SFX.build(); toast('🔧 ' + ((CO.peers[d.id] || {}).name || 'Yoldaşın') + ' ' + BUILDINGS[b2.type].name + '\'ni onardı!');
+      save();
+    }
+    return;
+  }
   if (ev === 'fx') { // karşı tarafın yaptığı iş: ekranda bildir + kaynak uçuş efekti
     if (d.msg) toast(d.msg);
     if (d.x !== undefined && d.icon) {
       for (let i = 0; i < 3; i++)
         G.flyItems.push({ x0: d.x + rr(-14, 14), y0: d.y - 30, x1: d.x2 !== undefined ? d.x2 : d.x, y1: d.y2 !== undefined ? d.y2 : d.y - 60, t: 0, icon: d.icon });
+    }
+    return;
+  }
+  if (ev === 'ssync') { // host'un gerçek ambarı: misafirin ekranı fotoğrafı değil gerçeği göstersin
+    if (!CO.isHost && VISIT) {
+      for (const [k2] of RES_DEF) if (k2 !== 'gold' && k2 !== 'gems') G.stock[k2] = (d.s || {})[k2] || 0;
+      if (G.panelFor && G.panelFor.stockPage) renderPanel();
     }
     return;
   }
@@ -1378,6 +1395,13 @@ function coopTick(dt) {
   if (CO.isHost && coopPeerCount() > 0) {
     CO.worldT += dt;
     if (CO.worldT >= 0.16) { CO.worldT = 0; coopBroadcastWorld(); }
+    CO.stockT = (CO.stockT || 0) + dt; // ambar durumu (misafir gerçek değeri görsün)
+    if (CO.stockT >= 2 && CO.mode === 'visit') {
+      CO.stockT = 0;
+      const st2 = {};
+      for (const [k2] of RES_DEF) if (G.stock[k2]) st2[k2] = Math.floor(G.stock[k2]);
+      coopSend('ssync', { s: st2, cap: stockCap() });
+    }
   }
   // yoldaşların konumunu yumuşat + sessizleşeni düşür
   for (const id of Object.keys(CO.peers)) {
@@ -2452,14 +2476,27 @@ function renderPanel() {
   }
   if (th.stockPage) { // 🏬 Köy Deposu: pasif üretim burada birikir — al/bırak
     const cap = stockCap();
-    elPanelTitle.textContent = '🏬 Köy Deposu';
-    let html = '<div class="pdesc" style="margin-bottom:8px">Pasif üretim (bıçkıhane, köylüler, avcı kulübesi) burada birikir. Limit: <b>' + cap + '</b>/kaynak — 🏬 Depo binası kur, artır. Askerler etini buradan yer.</div>';
+    elPanelTitle.textContent = '🏬 Köy Deposu' + (VISIT ? ' — ' + VISIT.name : '');
+    // ZİYARETTE: burası ev sahibinin ambarı. Elle bırakmaya gerek yok, topladığın
+    // her şey ona zaten akıyor; elle "bırak" hem çift sayardı hem de kaybolurdu.
+    let html = VISIT
+      ? '<div class="pdesc" style="margin-bottom:8px">🎁 <b>' + VISIT.name + '</b>\'ın ambarı. Burada <b>topladığın her şey</b> (odun, taş, hurda, av eti) doğrudan buraya akar — elle bırakman gerekmez.' +
+        (coopPeerCount() ? ' Ev sahibi çevrimiçi: kaynaklar <b>anında</b> geçiyor.' : ' Ev sahibi çevrimdışı: ayrılırken toplu olarak teslim edilecek.') +
+        ' Ambarındaki kaynakları köyünün <b>oto yönetimi</b> inşaat, tamir ve asker için kullanır.</div>'
+      : '<div class="pdesc" style="margin-bottom:8px">Pasif üretim (bıçkıhane, köylüler, avcı kulübesi) burada birikir. Limit: <b>' + cap + '</b>/kaynak — 🏬 Depo binası kur, artır. Askerler etini buradan yer.</div>';
+    if (VISIT) { // ziyaretçinin bu tur getirdiği: henüz gönderilmemiş + gönderilmiş toplam
+      const bek = G.helpFx && G.helpFx.don ? Object.entries(G.helpFx.don).filter(([, v]) => v > 0) : [];
+      html += '<div class="stockRow"><span class="stockInfo">🎒 Bu ziyarette topladıkların: <b>' +
+        (bek.length ? bek.map(([k2, v2]) => Math.floor(v2) + (RES_DEF.find(r => r[0] === k2) || ['', ''])[1]).join(' ') : 'henüz yok') +
+        '</b></span></div>';
+    }
     for (const [k, icon] of RES_DEF) {
       if (k === 'gold' || k === 'gems') continue; // değerliler hep cepte
       const s2 = Math.floor(G.stock[k] || 0), pk = Math.floor(G.res[k] || 0);
-      html += '<div class="stockRow"><span class="stockInfo">' + icon + ' <b>' + s2 + '</b>/' + cap + ' <span class="stockPocket">· cebinde ' + pk + '</span></span>' +
-        '<button class="garBtn stockBtn" data-k="' + k + '" data-op="take" ' + (s2 ? '' : 'disabled') + '>⬇ Al</button>' +
-        '<button class="garBtn stockBtn" data-k="' + k + '" data-op="put" ' + (pk && s2 < cap ? '' : 'disabled') + '>⬆ Bırak</button></div>';
+      html += '<div class="stockRow"><span class="stockInfo">' + icon + ' <b>' + s2 + '</b>/' + cap + (VISIT ? '' : ' <span class="stockPocket">· cebinde ' + pk + '</span>') + '</span>' +
+        (VISIT ? '' :
+          '<button class="garBtn stockBtn" data-k="' + k + '" data-op="take" ' + (s2 ? '' : 'disabled') + '>⬇ Al</button>' +
+          '<button class="garBtn stockBtn" data-k="' + k + '" data-op="put" ' + (pk && s2 < cap ? '' : 'disabled') + '>⬆ Bırak</button>') + '</div>';
     }
     elPanelBody.innerHTML = html;
     elPanelBody.querySelectorAll('.stockBtn').forEach(el => el.addEventListener('click', () => {
@@ -4949,6 +4986,7 @@ function update(dt) {
         dSite = { x: bR.x, y: bR.y, need: bcost(repairCost(bR.type)), paid: bR.repPaid, complete: () => {
           delete bR.repPaid; bR.ruined = false; bR.hp = bR.maxHp;
           if (VISIT && G.helpFx) G.helpFx.repairs++;
+          if (coopSlave()) coopSend('fix', { x: Math.round(bR.x), y: Math.round(bR.y) }); // ev sahibinde de onarılsın
           SFX.build(); toast(BUILDINGS[bR.type].name + ' onarıldı! 🔧'); save();
         } };
       }
