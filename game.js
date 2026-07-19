@@ -3135,7 +3135,9 @@ for (const [k, icon] of RES_DEF) {
 function flashChip(k) { chipEls[k].classList.remove('flash'); void chipEls[k].offsetWidth; chipEls[k].classList.add('flash'); }
 function toast(msg, bad) {
   const t = document.createElement('div'); t.className = 'toast' + (bad ? ' bad' : ''); t.textContent = msg;
-  elToasts.appendChild(t); setTimeout(() => t.remove(), 2200);
+  elToasts.appendChild(t);
+  setTimeout(() => t.remove(), 2600);              // .toast animasyonuyla aynı süre
+  while (elToasts.childElementCount > 6) elToasts.firstElementChild.remove();  // sağ üstte yığılıp ekranı kaplamasın
 }
 function banner(msg) { elBanner.textContent = msg; elBanner.classList.remove('show'); void elBanner.offsetWidth; elBanner.classList.add('show'); }
 // Kenar butonlarında "burada yapacak iş var" bildirimi (kırmızı zıplayan top)

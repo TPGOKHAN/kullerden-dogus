@@ -30,7 +30,7 @@ canvas { display: block; position: fixed; inset: 0; touch-action: none; }
 #clock { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 40px); right: 12px; background: rgba(30,28,45,.85); border: 1px solid rgba(255,255,255,.2); border-radius: 14px; padding: 4px 12px; color: #f3e6c8; font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 #clock.night { color: #aecbff; border-color: rgba(140,170,255,.45); }
 /* Gün sonu raporu: sağ üstte belirir, kendiliğinden kaybolur */
-#dayReport { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 74px); right: 12px; max-width: 300px; background: rgba(30,28,45,.92); border: 1px solid rgba(255,217,126,.4); border-radius: 10px; padding: 8px 13px; color: #ffe9b0; font-size: 12.5px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.5); animation: dayrep .4s ease-out; }
+#dayReport { max-width: 100%; background: rgba(30,28,45,.92); border: 1px solid rgba(255,217,126,.4); border-radius: 10px; padding: 8px 13px; color: #ffe9b0; font-size: 12.5px; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,.5); animation: dayrep .4s ease-out; }
 #dayReport.bad { color: #ffb0a8; border-color: rgba(255,120,110,.5); }
 @keyframes dayrep { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 
@@ -41,10 +41,16 @@ canvas { display: block; position: fixed; inset: 0; touch-action: none; }
 #prompt { position: absolute; bottom: 26vh; left: 50%; transform: translateX(-50%); background: rgba(20,18,30,.85); color: #ffe9b0; border: 1px solid rgba(243,230,200,.3); padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; }
 #prompt:empty { display: none; }
 
-#toasts { position: absolute; bottom: 34vh; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.toast { background: rgba(20,18,30,.85); color: #d9f7c1; padding: 5px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; animation: toastup 2.2s forwards; }
+/* Bildirimler SAĞ ÜSTTE, kaynak/saat/gün raporu yığınının altında birikir —
+   ortada durup oyun alanını kapatıyorlardı. Sağdan kayarak girip çıkarlar. */
+/* Sağ üst bildirim sütunu: gün raporu üstte, bildirimler altında akar.
+   Mutlak konumla sabitlenince uzun (3 satırlık) gün raporu bildirimlerin
+   üstüne biniyordu — artık akış hâlinde diziliyorlar. */
+#notifCol { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 74px); right: 12px; width: min(340px, 62vw); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+#toasts { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; width: 100%; }
+.toast { background: rgba(20,18,30,.9); color: #d9f7c1; padding: 6px 13px; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: right; box-shadow: 0 3px 10px rgba(0,0,0,.45); animation: toastin 2.6s forwards; }
 .toast.bad { color: #ffb0a8; }
-@keyframes toastup { 0% { opacity: 0; transform: translateY(8px); } 12% { opacity: 1; transform: translateY(0); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+@keyframes toastin { 0% { opacity: 0; transform: translateX(26px); } 10% { opacity: 1; transform: none; } 78% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(26px); } }
 
 #banner { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); font-family: Georgia, serif; font-size: clamp(26px, 5vw, 46px); font-weight: 700; color: #ffd97e; text-shadow: 0 2px 0 #6b3c12, 0 4px 14px rgba(0,0,0,.7); opacity: 0; pointer-events: none; letter-spacing: 2px; text-align: center; }
 #banner.show { animation: bannerin 3s forwards; }
