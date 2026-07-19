@@ -2487,15 +2487,22 @@ const cmdOwned = id =>
   Object.values(G.prisoners).some(arr => arr.some(m => m.cmd === id)) ||
   G.props.some(pr => pr.kind === 'kneel' && pr.cmd === id);
 // komutan leş sayar, eşiği geçince güçlenir
-function cmdKill(c) {
-  c.kills++;
-  if (c.lv >= CMD_LV_MAX) return; // komutan tavanı: Sv.20
-  if (c.kills >= cmdKillsNeed(c.lv)) {
-    c.kills = 0; c.lv++;
+function cmdKill(c, mul) {
+  // Kredi = düşmanın kademe çarpanı: Kademe 10'da bir leş ~6 sayılır. Leşler
+  // sayıyla ölçüldüğünden çetinleşen düşman aynı 1 krediyi veriyordu — 14
+  // vilayetlik kampanya ~2100 leş ederken Sv.80 tavanı 4846 istiyordu.
+  c.kills += Math.max(1, Math.round(mul || 1));
+  if (c.lv >= CMD_LV_MAX) return;
+  let atladi = 0;
+  while (c.lv < CMD_LV_MAX && c.kills >= cmdKillsNeed(c.lv)) {
+    c.kills -= cmdKillsNeed(c.lv); c.lv++; atladi++;   // taşan kredi devreder
+  }
+  if (atladi) {
     cmdRecalc(c);
-    c.hp = Math.min(c.maxHp, c.hp + 30);
+    c.hp = Math.min(c.maxHp, c.hp + 30 * atladi);
     const C = COMMANDERS[c.id];
-    toast('⭐ ' + C.name + ' Sv.' + c.lv + ' oldu! (+14❤ +2⚔)');
+    const kazanc = c.lv <= 20 ? '+14❤ +2⚔' : '+7❤ +1⚔';   // Sv.20 sonrası kazanç yarıya iner
+    toast('⭐ ' + C.name + ' Sv.' + c.lv + ' oldu! (' + kazanc + ')');
     spawnParts(c.x, c.y - 30, 14, { colors: ['#ffd257', '#fff3c9', '#c9a8f0'], v: 55, life: 1.0, g: -28 });
     SFX.upgrade();
   }
@@ -3165,7 +3172,7 @@ function checkQuests() {
     }
     G.questIdx++;
     advanced = true;
-    if (simdi) { SFX.upgrade(); addXp(40, G.player.x, G.player.y - 50); }
+    if (simdi) { SFX.upgrade(); addXp(regXp(40), G.player.x, G.player.y - 50); }
     if (G.questIdx < QUESTS.length) toast('Yeni görev: ' + QUESTS[G.questIdx].text);
   }
   if (advanced) markRumors();
@@ -5025,6 +5032,9 @@ function damageVillageGate(dmg) {
   }
 }
 // XP kazan + seviye atlama (her seviye: +10 can, +1 hasar; çift seviyelerde kapasite artar)
+// Sabit XP ödülleri (fetih, görev, kurtarma) için bölge çarpanı — leş XP'siyle
+// aynı mantık: Kademe 5'te bir kale fethi, Kademe 1'dekinden zor, ödülü de öyle.
+const regXp = n => Math.round(n * (1 + (G.region - 1) * 0.6));
 function addXp(n, x, y) {
   if (G.level >= LEVEL_MAX) return;
   n = Math.max(1, Math.round(n * BAL.xp));
@@ -5112,8 +5122,12 @@ function killEnemy(e, killer) {
     : killer && killer.cmdTroop && killer.own && cmdIndependent(killer.own) ? killer.own : null;
   // co-op: son vuruş yoldaşındansa ganimet ONA gider; ölüm her hâlükârda yayınlanır
   const coopClaim = coopHost() && e.lastHitBy && CO.peers[e.lastHitBy] ? e.lastHitBy : null;
+  // XP artık düşmanın kademe çarpanıyla ölçeklenir (e.mul: bölge+zorluk).
+  // Eskiden can/hasar/altın ölçeklenip XP sabit kalıyordu: 14 vilayetlik kampanya
+  // ~77k XP veriyordu, Sv.100 için 220k gerek — oyuncu Sv.52'de duvara tosluyordu.
+  const kXp = Math.max(1, Math.round((d.xp || 10) * (e.mul || 1)));
   if (coopHost()) coopSend('dead', { u: e.uid, by: coopClaim, loot: coopClaim ? loot : null,
-    xp: coopClaim ? (d.xp || 10) : 0, x: Math.round(e.x), y: Math.round(e.y) });
+    xp: coopClaim ? kXp : 0, x: Math.round(e.x), y: Math.round(e.y) });
   if (coopClaim) { /* ganimet yoldaşın hanesine yazıldı */ }
   else if (purseCmd) {
     purseCmd.purse = (purseCmd.purse || 0) + gold + (loot.scrap || 0) * 2;
@@ -5122,8 +5136,11 @@ function killEnemy(e, killer) {
   if (!coopClaim) G.stats.kills++;
   if (VISIT && G.helpFx) G.helpFx.kills++;
   if (ISLAND) { G.islOps.kills = (G.islOps.kills || 0) + 1; islContrib('kills', 1); }
-  if (killer && killer.cmd) cmdKill(killer); // komutan leşiyle seviye atlar
-  else if (killer && killer.soldier) soldierXp(killer, Math.max(4, Math.round((d.xp || 10) / 2))); // asker XP biriktirir (terfi manuel)
+  if (killer && killer.cmd) cmdKill(killer, e.mul || 1); // komutan leşiyle seviye atlar — çetin düşman çok kredi
+  // Asker XP'si KAREKÖKLE ölçeklenir: tam çarpan Sv.25 tavanını kampanyanın
+  // yarısında doldurup terfi sistemini anlamsızlaştırıyordu (ihtiyaç 4245 XP,
+  // tam çarpanla arz ~33k). Karekök, çetin düşmanın uzun kesim süresini telafi eder.
+  else if (killer && killer.soldier) soldierXp(killer, Math.max(4, Math.round((d.xp || 10) / 2 * Math.sqrt(e.mul || 1))));
   // kuşam dropu: boss garanti (yüksek tablo), seçkinler orta, sıradanlar düşük şans
   const GEAR_BOSS = { chief: 2, commander: 2, rivallord: 2, bear: 2, troll: 2 };
   const GEAR_ELITE = { guard: 1, legion: 1, brute: 1, shieldbarb: 1, shaman: 1 };
@@ -5133,7 +5150,7 @@ function killEnemy(e, killer) {
   SFX.coin(); spawnDust(e.x, e.y, 8);
   spawnParts(e.x, e.y - 20, 9, { colors: ['#8a2f2a', '#5c1f1a', '#c9ced6'], v: 80, life: 0.5, g: 140 });
   addFloater(e.x, e.y - 60 * eDef(e).scale, '💀', '#e8d9c0', 15);
-  if (!coopClaim) addXp(d.xp || 10, e.x, e.y - 40);
+  if (!coopClaim) addXp(kXp, e.x, e.y - 40);
   if (rng() < 0.18) G.pickups.push({ x: e.x + rr(-14, 14), y: e.y + rr(-8, 8), t: 12 }); // şifa damlası
   if (e.type === 'chief') { banner('KALE ŞEFİ DÜŞTÜ!'); if (e.camp === 'fort') spawnKneel(cmdIdFor('chief'), e.x, e.y); }
   if (e.type === 'commander') { banner('LEJYON KOMUTANI DÜŞTÜ!'); if (e.camp === 'legion') spawnKneel(cmdIdFor('cmdr'), e.x, e.y); }
@@ -5194,23 +5211,23 @@ function damageStructure(s, dmg) {
     if (s.kind === 'totem') {
       G.camp1Destroyed = true;
       gain({ gold: 100, scrap: 20 }, s.x, s.y);
-      addXp(60, s.x, s.y - 60);
+      addXp(regXp(60), s.x, s.y - 60);
       banner('BARBAR KAMPI DÜŞTÜ!');
       for (const e of G.enemies) if (e.camp === 'camp1' && e.hp > 0) e.hp = Math.min(e.hp, 10); // moral çöküşü
       createOutpost('camp1');
       if (ISLAND) { (G.islOps.cleared = G.islOps.cleared || []).push('camp1'); islContrib('cleared', 1); }
     } else if (s.kind === 'itotem') { // ada kampı: paylaşılan temizlik
       gain({ gold: 150, scrap: 25 }, s.x, s.y);
-      addXp(80, s.x, s.y - 60);
+      addXp(regXp(80), s.x, s.y - 60);
       banner('ADA KAMPI TEMİZLENDİ!');
       for (const e of G.enemies) if (e.camp === s.site && e.hp > 0) e.hp = Math.min(e.hp, 10);
       if (ISLAND) { (G.islOps.cleared = G.islOps.cleared || []).push(s.site); islContrib('cleared', 1); }
     } else if (s.kind === 'gate') {
       if (G.outposts.fort) toast('🚨 Taş Kale\'nin kapısı kırıldı!', true); // bizim kapımız düştü
-      else { banner('DIŞ KAPI KIRILDI! HÜCUM!'); addXp(50, s.x, s.y - 60); }
+      else { banner('DIŞ KAPI KIRILDI! HÜCUM!'); addXp(regXp(50), s.x, s.y - 60); }
     } else if (s.kind === 'gate2' || s.kind === 'gate3') {
       banner(s.kind === 'gate2' ? 'ORTA SUR KAPISI PARÇALANDI!' : 'İÇ KALE DÜŞTÜ!');
-      addXp(60, s.x, s.y - 60);
+      addXp(regXp(60), s.x, s.y - 60);
     } else if (s.kind === 'gate2' || s.kind === 'gate3') {
     ctx.fillStyle = s.kind === 'gate2' ? '#5f4a33' : '#4a3a2a';
     ctx.fillRect(s.x - 11, s.gy, 22, s.gh);
@@ -5219,12 +5236,12 @@ function damageStructure(s, dmg) {
     ctx.fillStyle = '#8b8f98'; ctx.fillRect(s.x - 11, s.gy + 12, 22, 4); ctx.fillRect(s.x - 11, s.gy + s.gh - 16, 22, 4);
   } else if (s.kind === 'lgate') {
       if (G.outposts.legion) toast('🚨 Lejyon Karakolu\'nun kapısı kırıldı!', true);
-      else { banner('ÇELİK KAPI PARÇALANDI! HÜCUM!'); addXp(90, s.x, s.y - 60); }
+      else { banner('ÇELİK KAPI PARÇALANDI! HÜCUM!'); addXp(regXp(90), s.x, s.y - 60); }
     } else if (s.kind === 'chest') {
       G.chestOpened = true;
       gain({ gold: 300, gems: 10 }, s.x, s.y);
       dropGear(3, s.x, s.y); dropGear(2, s.x, s.y);
-      addXp(80, s.x, s.y - 60);
+      addXp(regXp(80), s.x, s.y - 60);
       banner('KALE FETHEDİLDİ! 💎');
       createOutpost('fort');
       if (ISLAND) { (G.islOps.cleared = G.islOps.cleared || []).push('fort'); islContrib('cleared', 1); }
@@ -5232,14 +5249,14 @@ function damageStructure(s, dmg) {
       G.legionConquered = true;
       gain({ gold: 500, gems: 25 }, s.x, s.y);
       dropGear(3, s.x, s.y); dropGear(3, s.x, s.y);
-      addXp(150, s.x, s.y - 60);
+      addXp(regXp(150), s.x, s.y - 60);
       banner('LEJYON KARARGÂHI DÜŞTÜ! 💎💎');
       createOutpost('legion');
       if (ISLAND) { (G.islOps.cleared = G.islOps.cleared || []).push('legion'); islContrib('cleared', 1); }
     } else if (s.kind === 'cavechest') {
       gain({ gold: 120 + G.region * 80, gems: 5 + G.region * 3 }, s.x, s.y);
       dropGear(3, s.x, s.y); dropGear(1, s.x, s.y);
-      addXp(100, s.x, s.y - 60);
+      addXp(regXp(100), s.x, s.y - 60);
       G.caveCleared = true;
       G.caveCd = 900; // 15 dakika sonra in yeniden dolar
       banner('İNİN HAZİNESİ! 💎');
@@ -6290,7 +6307,7 @@ function finishInfil(ok, sebep) {
     // kurtarma koşusunda kapıya dokunulmaz
     toast('🥷 ' + gains.join(' · '), false);
     banner(koptu ? '⛓️ ZİNCİRLER KIRILDI!' : '🥷 SIZMA BİTTİ');
-    addXp(koptu ? 90 : 30, G.player.x, G.player.y - 40);
+    addXp(regXp(koptu ? 90 : 30), G.player.x, G.player.y - 40);
     SFX.upgrade(); save(); return;
   }
   // --- SABOTAJ GÖREVİ ---
@@ -6314,7 +6331,7 @@ function finishInfil(ok, sebep) {
   }
   banner('🥷 SIZMA BAŞARILI!');
   toast('🥷 ' + gains.join(' · '), false);
-  addXp(60, G.player.x, G.player.y - 40);
+  addXp(regXp(60), G.player.x, G.player.y - 40);
   SFX.upgrade(); save();
 }
 
@@ -6401,7 +6418,7 @@ function endNight() {
   if (G.raidHappened) {
     G.raidsSurvived++;
     SFX.dawn(); banner('☀️ ŞAFAK — baskın savuşturuldu!');
-    addXp(30, G.player.x, G.player.y - 50);
+    addXp(regXp(30), G.player.x, G.player.y - 50);
     if (fled > 0) toast(fled + ' baskıncı şafakla kaçtı');
   }
   G.raidHappened = false; G.duskWarned = false; G.day++;
