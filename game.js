@@ -3130,7 +3130,7 @@ function refreshHudDots() {
   const yoldas = !NETP ? false : (G.netFriends || []).some(f => f.has_village && (BAL.visitSec - (f.used || 0)) > 60);
   hudDot('btnFriends', yoldas && !VISIT && !ISLAND);
   // 🗺️ Harita: yerde yaralı yoldaş var (haritada kırmızı nabızla işaretli)
-  hudDot('btnMap', G.wounded.length > 0);
+  hudDot('btnMap', G.wounded.length > 0 || G.props.some(pr => pr.kind === 'kneel'));
 }
 function updateHUD() {
   for (const [k] of RES_DEF) { const el = $('chip-' + k); const v = String(Math.floor(G.res[k])); if (el.textContent !== v) el.textContent = v; }
@@ -3158,6 +3158,9 @@ function updateHUD() {
   let ai = '<span class="cap' + (full ? ' full' : '') + '">🗡️ ' + G.soldiers.length + '/' + soldierCap() + '</span>';
   for (const c of G.commanders) ai += ' <span class="cmdTag">' + COMMANDERS[c.id].icon + 'Sv.' + c.lv + '</span>';
   for (const w of G.wounded) if (w.cmd) ai += '<br><span class="capTag">🩸 ' + COMMANDERS[w.cmd].name + ' yaralı!</span>';
+  // teslim olmuş komutanlar: yanına gidip konuşulmayı bekliyorlar (haritada 🏳️)
+  for (const pr of G.props) if (pr.kind === 'kneel' && COMMANDERS[pr.cmd])
+    ai += '<br><span class="capTag">🏳️ ' + COMMANDERS[pr.cmd].name + ' teslim oldu — haritadan yerini bul</span>';
   for (const [st2, arr] of Object.entries(G.prisoners))
     for (const m of arr) if (m.cmd) ai += '<br><span class="capTag">🔒 ' + COMMANDERS[m.cmd].name + ' esir — zindan: ' + OUTPOSTS[st2].name.replace(' Karakolu', '') + '</span>';
   if (G.famine) ai += '<br><span class="capTag">🍖 ET BİTTİ — işçiler grevde' + (G.famineT > 45 ? ', ordu DAĞILIYOR!' : ', ordu aç!') + '</span>';
@@ -4477,6 +4480,25 @@ function drawMap() {
     const ad = (w.name || (w.cmd && COMMANDERS[w.cmd] && COMMANDERS[w.cmd].name) || 'Yaralı asker') + ' — yaralı!';
     m.lineWidth = 3; m.strokeStyle = 'rgba(12,16,22,0.75)'; m.strokeText(ad, wx3, wy3 - 13);
     m.fillStyle = '#ff9a8a'; m.fillText(ad, wx3, wy3 - 13);
+  }
+  // TESLİM OLAN KOMUTANLAR: beyaz bayrakla diz çökmüş bekliyorlar. Yanlarına
+  // gidip konuşmadan safa katılmıyorlar, o yüzden yerlerini haritadan görmek şart.
+  for (const pr of G.props) {
+    if (pr.kind !== 'kneel' || !COMMANDERS[pr.cmd]) continue;
+    const [kx, ky] = W2S(pr.x, pr.y);
+    const nb = 0.6 + Math.sin(G.t * 3 + pr.x) * 0.4;
+    // parşömen zeminde beyaz soluk kalıyordu: koyu halka + mavi-gri nabız
+    m.fillStyle = 'rgba(90,120,160,' + (0.16 + nb * 0.16) + ')';
+    m.beginPath(); m.arc(kx, ky, 16 + nb * 5, 0, TAU); m.fill();
+    m.fillStyle = '#3f4d63';
+    m.beginPath(); m.arc(kx, ky, 8, 0, TAU); m.fill();
+    m.strokeStyle = '#fff'; m.lineWidth = 2; m.stroke();
+    m.font = '11px sans-serif'; m.textAlign = 'center';
+    m.fillText('🏳️', kx, ky + 4);
+    m.font = 'bold 9.5px sans-serif'; m.lineJoin = 'round';
+    const ad = COMMANDERS[pr.cmd].name + ' — teslim oldu';
+    m.lineWidth = 3; m.strokeStyle = 'rgba(12,16,22,0.75)'; m.strokeText(ad, kx, ky - 13);
+    m.fillStyle = '#fff3d9'; m.fillText(ad, kx, ky - 13);
   }
   // oyuncu (indeyse mağara girişinde göster)
   const [px, py] = G.caveRun ? W2S(CAVE.x, CAVE.y) : W2S(G.player.x, G.player.y);
